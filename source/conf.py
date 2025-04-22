@@ -9,6 +9,7 @@
 project = 'pybriann'
 copyright = '2025, Tim Dick'
 author = 'Tim Dick'
+release = '0.0.1'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -16,7 +17,7 @@ author = 'Tim Dick'
 extensions = []
 
 templates_path = ['_templates']
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
+exclude_patterns = []
 
 
 
