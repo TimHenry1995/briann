@@ -22,7 +22,7 @@ setup(
     ],
     install_requires=["numpy >= 2.2.5"],
     extras_require={
-    "dev": ["pytest>=7.0", "twine>=6.1.0", "wheel >= 0.45.1", "setuptools >= 79.0.0"],
+    "dev": ["pytest>=7.0", "sphinx>=8.2.3", "sphinx_rtd_theme>=3.0.2", "twine>=6.1.0", "wheel >= 0.45.1", "setuptools >= 79.0.0"],
     },
     python_requires=">=3.13.2"
 )

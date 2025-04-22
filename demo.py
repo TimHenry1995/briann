@@ -1,3 +1,3 @@
-from briann import areas
+from pybriann import areas
 
 areas.Area()
