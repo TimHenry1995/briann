@@ -1,3 +1,3 @@
-from pybriann import areas
+from pybriann import network_components
 
-areas.Area()
+network_components.Area()

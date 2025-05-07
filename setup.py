@@ -20,7 +20,7 @@ setup(
     "Programming Language :: Python :: 3.10",
     "Operating System :: OS Independent"
     ],
-    install_requires=["numpy >= 2.2.5"],
+    install_requires=["numpy >= 2.2.5", "torch>=2.6.0"],
     extras_require={
     "dev": ["pytest>=7.0", "sphinx>=8.2.3", "sphinx_rtd_theme>=3.0.2", "twine>=6.1.0", "wheel >= 0.45.1", "setuptools >= 79.0.0"],
     },
