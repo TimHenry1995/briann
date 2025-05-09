@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pybriann"
+version = "0.0.1"
+description = "This is a package for developing brain inspired artificial neural networks."
+readme = "README.md"
+authors = [
+    { name = "Tim Dick", email = "tim.dick@maastrichtuniversity.nl"}
+]
+requires-python = ">=3.11.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
+# List external dependencies of your packages
+dependencies = [
+    "numpy>=2.2.5",
+    "torch>=2.6.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
