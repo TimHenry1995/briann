@@ -26,3 +26,43 @@ You can check whether your code is accessible and runs as expected as follows:
 2. Make sure you have twine installed by running the terminal command `pip install twine`
 3. In order to upload the distributable to the test PyPi (recommended), run the terminal command `twine upload -r testpypi dist/*`. When it asks for the api key/ password, paste the key in. Note that on Windows, ctrl-v might not work. Use the Edit>Paste dialogue instead. Then, go on the test PyPi website and log in to see if the upload worked.
 4. Assuming your distributable was uploaded successfully to test PyPi, you can upload it to PyPi by running the terminal command `twine upload dist/*`. Then, check on the PyPi website whether it worked successfully.
+
+## Exporting the documentation to a local website
+In order to export the documentation (mostly doc-comments inside the code) to a website that can be uploaded to read-the-docs:
+1. Ensure you have installed sphinx using the terminal command `pip install sphinx sphinx_rtd_theme` .
+2. In case no documentation website has been generated yet, 
+   1. Create a folder called *docs* in the project's root directory.
+   2. In the terminal, use the command `cd docs` to change its directory to the new docs folder.
+   3. Run the terminal command `sphinx-quickstart` to generate some basic source documentation files. When asked, choose to separate the source from the build files such that we get two separate subfolders that are easier to work with later on. 
+   4. Navigate to the file *conf.py* in docs/source and paste the below code snipppet in order to make sure your code (located in the *src* folder of this repository) will be found by sphinx. Note that this redirecting assumes that your terminal is currently in the docs folder and the .. makes sphinx go back to the project's root folder before going to the *src* folder.
+      ```
+      import os
+      import sys
+      sys.path.insert(0, os.path.abspath(os.path.join('..', '..', 'src')))
+      ```
+   5. Also include `extensions = ['sphinx.ext.autodoc', 'sphinx.ext.viewcode', 'sphinx.ext.todo']` and set `html_theme = 'sphinx_rtd_theme'`in the *conf.py* file. 
+   6. In the file *index.rst* located in docs/source, make sure you have the following code
+      ```
+      Welcome to Project's documentation!
+      ===================================
+
+      .. toctree::
+         :maxdepth: 2
+         :caption: Contents:
+
+         source/modules
+               
+      Indices and tables
+      ==================
+
+      * :ref:`genindex`
+      * :ref:`modindex`
+      * :ref:`search`
+
+      ```
+   4. Run the terminal command `sphinx-apidoc -o ./source ../src` which generates the sphinx source files based on the modules found in the *src* folder of our project. Since the terminal is currently inside the docs folder, we specify the location of the *src* folder using the ../ beforehand. The output files are the *.rst* files in the docs/source folder and there should be one for each of your python modules defined in the *src* folder. If one is missing, make sure you have an empty *__init__.py* file in each of your *src* packages, including *src* itself.
+   5. Run the *python* terminal command `make html` to generate the build files from the source files. If you now open the *index.html* page from docs/build in your web-browser, you should see the documentation.
+3. Then, whenever you want to export your updated documentation to a new build, delete the old *source folder* in docs. Then, make sure your terminal is in the *docs* folder (using the terminal command `cd docs`) and then run the terminal commands `sphinx-apidoc -o ./source ../src` and  `make html` as explained earlier. You can then inspect the website by opening the *index.html* file from the build/html folder in a web browser.
+4. To make some further modifications to the webiste, you can for instance go the the file called *index.rst* and can write some information about the code. You can also adjust the design of the website by going to the file called *conf.py* inside the docs source folder and change the tag `html_theme` to `sphinx_rtd_theme` or any other theme you prefer. Make sure you enter your theme to the requirements.txt file in the docs/source folder such that the read-the-docs server installs it before building your website online. (see section on uploading documentation to read-the-docs).
+
+## Upload the documentation to read-the-docs
