@@ -9,12 +9,27 @@ In order to develop for this package:
 5. In your code editor, navigate to the source code (src directory) or unit tests (unit_tests) or documentation (docs) as you prefer. Whenever you install new dependencies, list them in the pyprojetc.toml file.
 
 ## Building a distributable version of the code
-In order to distribute the updated code:
+If you made any changes to the *c++ code*, do the following
+1. Make sure you have a running c++ installation for you code editor.
+2. Make sure you have a running installation of the cmake command toolbox (https://cmake.org/download/)
+3. Then, in the terminal of your code editor, make sure your conda environment for this project is activated (see above)
+4. Next, inside your terminal, install the pybind11 package using the command `pip install pybind11`
+5. Then, make sure your CMakeLists.txt and pybind_wrapper.cpp files according to your requirements, since they will be used to compile your code and make it available to python.
+6. Now, still inside your terminal, navigate to the folder where the c++ files are located that you edited and run the commands
+   ```
+   cmake -S. -Bbuild -Ax64
+   cmake --build build -j
+   ```
+7. You should now be able to import your c++ functionality from within your python files.
+8. Whenever you want to rebuild your c++ code, execute steps 5 to 7 again.
+
+If you now want to build a distributable of the updated code (regardless of whether you updated the c++ or python code):
 1. Install the required build tools using the command: `pip install build setuptools wheel`
 2. Make sure the file *pyproject.toml* describes all specifications of your code properly. Typically, this involves incrementing the version number of your library and making sure that all new dependencies and packages of your code are properly listed. 
 3. Delete the old distributables by removing the *.egg-info* located in the *src* directory as well as the *dist* directory which is located in the project's root directory. 
-3. From within the project's root directory, build the new distributable according using the command: `python -m build`
+4. From within the project's root directory, build the new distributable according using the command: `python -m build`
    Observe how a new egg-info and a dist directory were created and filled with the distributable version of the project code.
+5. Whenever you want to repeat the build, repeat steps 3 and 4.
 
 ## Verifying the validity of the distributbale
 You can check whether your code is accessible and runs as expected as follows:
@@ -66,3 +81,4 @@ In order to export the documentation (mostly doc-comments inside the code) to a 
 4. To make some further modifications to the webiste, you can for instance go the the file called *index.rst* and can write some information about the code. You can also adjust the design of the website by going to the file called *conf.py* inside the docs source folder and change the tag `html_theme` to `sphinx_rtd_theme` or any other theme you prefer. Make sure you enter your theme to the requirements.txt file in the docs/source folder such that the read-the-docs server installs it before building your website online. (see section on uploading documentation to read-the-docs).
 
 ## Upload the documentation to read-the-docs
+
