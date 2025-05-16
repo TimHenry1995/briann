@@ -14,8 +14,8 @@ If you made any changes to the *c++ code*, do the following
 2. Make sure you have a running installation of the cmake command toolbox (https://cmake.org/download/)
 3. Then, in the terminal of your code editor, make sure your conda environment for this project is activated (see above)
 4. Next, inside your terminal, install the pybind11 package using the command `pip install pybind11`
-5. Then, make sure your CMakeLists.txt and pybind_wrapper.cpp files according to your requirements, since they will be used to compile your code and make it available to python.
-6. Now, still inside your terminal, navigate to the folder where the c++ files are located that you edited and run the commands
+5. Then, make sure your CMakeLists.txt and pybind_wrapper.cpp files are according to your requirements, since they will be used to compile your code and make it available to python.
+6. Now, still inside your terminal, use `cd <directory>` (where `<directory>` is the name of the target directory) to navigate to the folder where the c++ files are located that you edited and run the commands
    ```
    cmake -S. -Bbuild -Ax64
    cmake --build build -j
@@ -26,8 +26,8 @@ If you made any changes to the *c++ code*, do the following
 If you now want to build a distributable of the updated code (regardless of whether you updated the c++ or python code):
 1. Install the required build tools using the command: `pip install build setuptools wheel`
 2. Make sure the file *pyproject.toml* describes all specifications of your code properly. Typically, this involves incrementing the version number of your library and making sure that all new dependencies and packages of your code are properly listed. 
-3. Delete the old distributables by removing the *.egg-info* located in the *src* directory as well as the *dist* directory which is located in the project's root directory. 
-4. From within the project's root directory, build the new distributable according using the command: `python -m build`
+3. Delete the old distributables by removing the *.egg-info* located in the *src* directory as well as the *dist* directory which is located in the project's root directory. Note: since these are listed in the *.gitignore* file, you will not see these directories before you build your own first distributable. 
+4. From within the project's root directory, build the new distributable using the command: `python -m build`
    Observe how a new egg-info and a dist directory were created and filled with the distributable version of the project code.
 5. Whenever you want to repeat the build, repeat steps 3 and 4.
 

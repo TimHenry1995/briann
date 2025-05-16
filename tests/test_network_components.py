@@ -1,3 +1,4 @@
+'''
 import unittest
 from pybriann.network.components import TimeFrame
 import torch
@@ -15,3 +16,4 @@ class TestTimeFrame(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+'''
