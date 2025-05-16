@@ -8,30 +8,31 @@ In order to develop for this package:
 4. Install all dependencies of the project's code using the terminal command `pip install --editable .`.
 5. In your code editor, navigate to the source code (src directory) or unit tests (unit_tests) or documentation (docs) as you prefer. Whenever you install new dependencies, list them in the pyprojetc.toml file.
 
+## Developing the code
+
+### C++
+- You can find the c++ code of this project in the *src/briann/c_plus_plus* directory as well as a file called *CMakeLists.txt* (that helps with c++ compilation) in the project's root directory. 
+- In order to make your c++ code accessible inside your python code, the library [pybind11][https://pybind11.readthedocs.io/en/stable/index.html] is used. It allows you to create python modules that bind to your c++ functions. The two most important steps are to build a new module via pybind11's [*PYBIND11_MODULE*][https://pybind11.readthedocs.io/en/stable/reference.html] command (see below) and to configure its compilation via the *CMakeLists.txt*. In order to make sure pybind11 can bind your c++ functions to your python modules, you need to adhere to the following rules.
+   - *Changing the folder structure:* The basic folder structure of this project uses an *src* folder with a *briann* folder inside. It is recommended to keep at least the *src* folder because that simplifies imports of your packages. In case you want to change the name of the briann folder, make sure you change the name of the project in the *pyproject.toml* file (located in the project's root directory) to the same value. Otherwise, the build tool (scikit-build, specified in pyproject.toml) will not be able to bind the modules generated from your c++ code to the project.
+   - *Adding a new c++ function to an existing module:* You can write a new c++ function, e.g. next to an existing c++ function inside an existing .cpp file. Then, inside that .cpp file, inspect the current setup of the [*PYBIND11_MODULE*][https://pybind11.readthedocs.io/en/stable/reference.html] macro. This is a command that tells pybind11 how it should set up a python module containing the entry points to the c++ functions you want to make available to python. Make sure you register your new c++ function with this method. 
+   - *Adding a new module to an existing package:* Create a new c++ file (the module) in the same style as the existing modules inside an exisiting package (the encapsulating folder). This means, with the same `#include` statements at the top and the same general setup for the [*PYBIND11_MODULE*][https://pybind11.readthedocs.io/en/stable/reference.html] macro. When using this macro, you will need to provide a name for your new module. It makes sense to give it the same name as that of your new c++ file (excluding the .c++), but that is not obligatory. Now, navigate to the file *CMakeLists.txt* to configure how the compiler shall bind your c++ module to the python module. You should use the commands `python_add_library`, `target_link_libraries`, `target_compile_definitions` and `install` similar to how they are being used for the already configured modules. Note that the `install` command acts like placing your new module inside a package, such that in your python code you can import it as `from <package name> import <module name>`, where you need to replace `<package name>` and `<module name>` with your chosen names. 
+   - *Adding a new package to the existing c_plus_cplus package:* Create a new folder (the new package) inside the *src/c_plus_plus* folder. Make sure you have an empty file in there called *__init__.py*, or otherwise your folder will not be considered as a package by the scikit-build. Then, place some modules inside as described above. 
+
+Note that you cannot use this c++ code inside of your own python code before having generated a wheel from it (see below section on building a distributable). Then, use the terminal command `pip install .` to install the wheel of your own code. To prevent having to rebuild your entire project every time you made a change to your c++ code, consider writing unit tests in c++ before the build.
+
+### Python
+
 ## Building a distributable version of the code
-If you made any changes to the *c++ code*, do the following
-1. Make sure you have a running c++ installation for you code editor.
-2. Make sure you have a running installation of the cmake command toolbox (https://cmake.org/download/)
-3. Then, in the terminal of your code editor, make sure your conda environment for this project is activated (see above)
-4. Next, inside your terminal, install the pybind11 package using the command `pip install pybind11`
-5. Then, make sure your CMakeLists.txt and pybind_wrapper.cpp files are according to your requirements, since they will be used to compile your code and make it available to python.
-6. Now, still inside your terminal, use `cd <directory>` (where `<directory>` is the name of the target directory) to navigate to the folder where the c++ files are located that you edited and run the commands
-   ```
-   cmake -S. -Bbuild -Ax64
-   cmake --build build -j
-   ```
-7. You should now be able to import your c++ functionality from within your python files.
-8. Whenever you want to rebuild your c++ code, execute steps 5 to 7 again.
 
-If you now want to build a distributable of the updated code (regardless of whether you updated the c++ or python code):
-1. Install the required build tools using the command: `pip install build setuptools wheel`
-2. Make sure the file *pyproject.toml* describes all specifications of your code properly. Typically, this involves incrementing the version number of your library and making sure that all new dependencies and packages of your code are properly listed. 
-3. Delete the old distributables by removing the *.egg-info* located in the *src* directory as well as the *dist* directory which is located in the project's root directory. Note: since these are listed in the *.gitignore* file, you will not see these directories before you build your own first distributable. 
-4. From within the project's root directory, build the new distributable using the command: `python -m build`
-   Observe how a new egg-info and a dist directory were created and filled with the distributable version of the project code.
-5. Whenever you want to repeat the build, repeat steps 3 and 4.
+The distributable (typically a .whl file) is version of your code that can be run by the users of your project. Use the following steps to build a distributable.
 
-## Verifying the validity of the distributbale
+1. In the terminal of your code editor, make sure your conda environment for this project is activated (see above)
+2. Make sure you have scikit-build installed by running the command `pip install scikit-build`.
+3. Make sure your code (both c++ and python) runs bug-free and that the *CmakeLists.txt* and *pyproject.toml* files are configured properly, since they configure the build.
+4. In case you have a folder called *dist* in the project's root directory, make sure to delete any old builds (the *.whl* as well as the *.tar.gz* files) that you no longer need. This prevents interference during installation of your distributable later on.
+5. Inside your terminal, use the command `python -m build`. It is possible that it throws a warning about intermediate directories and incremental builds. You can usually ignore this warning. Then, observe how a *dist* folder was created (in case it did not yet exist) and that it contains a new *.whl* and *.tar.gz* file. You will typically only need the *.whl* file.
+
+## Verifying the validity of the distributable
 You can check whether your code is accessible and runs as expected as follows:
 - Let the twine tool do some standard checks on your distributable. First, make sure twine is installed by running the terminal command `pip install twine` and then execute the test from within the project's root directory by using the command: `twine check dist/*`
 - Do custom, manual checks by navigating to a different folder on your computer, creating a new python script where you test your new code. Then, create and activate a test conda environment and install the previosuly created distributable inside of it. This can be done using the command `pip install <path to distributable wheel>`, where `<path to distributable wheel>` is the path to the *.whl* file in the *dist* directory. Note that it might be necessary to put that path in quotation marks. In case you installed this wheel before, make sure to *un*install it before re-installing it, using `pip uninstall <path to distributbale wheel>`. Once you get back to the current project dircetory, make sure you switch back to the conda environemnt with which you develop this package. 

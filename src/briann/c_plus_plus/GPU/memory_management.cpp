@@ -3,13 +3,18 @@
 #define STRINGIFY(x) #x
 #define MACRO_STRINGIFY(x) STRINGIFY(x)
 
-int add(int i, int j) {
-    return i + j;
+void store(int i) {
+    return;
+}
+
+int load() {
+    int i = 0;
+    return i;
 }
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(_core, m) {
+PYBIND11_MODULE(GPU_memory_management_module, m) {
     m.doc() = R"pbdoc(
         Pybind11 example plugin
         -----------------------
@@ -19,20 +24,20 @@ PYBIND11_MODULE(_core, m) {
         .. autosummary::
            :toctree: _generate
 
-           add
-           subtract
+           store
+           load
     )pbdoc";
 
-    m.def("add", &add, R"pbdoc(
-        Add two numbers
+    m.def("store", &store, R"pbdoc(
+        Stores a number.
 
-        Some other explanation about the add function.
+        Some other explanation about the store function.
     )pbdoc");
 
-    m.def("subtract", [](int i, int j) { return i - j; }, R"pbdoc(
-        Subtract two numbers
+    m.def("load", &load, R"pbdoc(
+        Loads a number.
 
-        Some other explanation about the subtract function.
+        Some other explanation about the load function.
     )pbdoc");
 
 #ifdef VERSION_INFO
