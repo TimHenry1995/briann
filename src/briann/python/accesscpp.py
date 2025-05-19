@@ -1,3 +1,3 @@
-from briann.c_plus_plus import GPU 
+from briann.c_plus_plus.GPU import operations 
 
-print(GPU.add(8,8))
+print(operations.add(8,8))

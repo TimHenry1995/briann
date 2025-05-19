@@ -11,16 +11,7 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(GPU_operations_module, m) {
     m.doc() = R"pbdoc(
-        Pybind11 example plugin
-        -----------------------
-
-        .. currentmodule:: scikit_build_example
-
-        .. autosummary::
-           :toctree: _generate
-
-           add
-           subtract
+        This module collects functions for performing GPU operations.
     )pbdoc";
 
     m.def("add", &add, R"pbdoc(
