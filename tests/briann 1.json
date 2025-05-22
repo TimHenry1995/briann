@@ -1,0 +1,27 @@
+{
+    "Connections":
+    [
+        {
+            "input_area_index": 0,
+            "output_area_index": 1
+        },
+        {
+            "input_area_index": 1,
+            "output_area_index": 2
+        },
+        {
+            "input_area_index": 0,
+            "output_area_index": 2
+        }
+    ],
+
+    "Areas": 
+    [
+        {
+            "index": 0,
+            "initial_state": "torch.zeros(2,3)",
+            "update_rate": 0.1,
+            "transformation": "TimeAverageThenStateConcatenateThenTransformLinear(input_dimensionality=10, output_dimensionality=3"
+        }
+    ]
+}

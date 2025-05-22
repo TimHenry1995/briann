@@ -3,7 +3,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from typing import List, Dict
+from typing import List, Dict, Tuple
 import sys
 from abc import ABC, abstractmethod
 from collections import deque
@@ -81,40 +81,18 @@ class TimeFrameBuffer():
 
     Note:
     
-    * This class is intended to be used for time frames that are *contiguous*, i.e. time frames that are ascending and have no gaps in between them.  
+    * This class is intended to be used for time frames that are *contiguous*, i.e. time frames that are ascending and have no gaps larger than :py:meth:`TimeFrameBuffer.ERROR_MARGIN` in between them.  
     * The buffer is not thread-safe, i.e. it is not safe to add or remove :py:class:`.TimeFrame` objects from the buffer from multiple threads at the same time.
-    
-    :param time_axis: Sets the :py:attr:`~.TimeFrameBuffer.time_axis` property of this buffer.
-    :type time_axis: int
-    :param error_margin: Sets the :py:attr:`~.TimeFrameBuffer.error_margin` of this buffer.
-    :type error_margin: float, optional, defaults to 1e-10
     """
 
-    def __init__(self, time_axis: int, error_margin: float = 1e-10) -> None:
-                
-        # Set time axis
-        if not isinstance(time_axis, int):
-            raise TypeError("The time_axis must be an int.")
-        if not time_axis >= 0:
-            raise ValueError("The time_axis must be greater than or equal to 0.")
-        self._time_axis = time_axis
+    ERROR_MARGIN = 1e-10 
+    """The error margin used to determine whether two time frames are contiguous. This is a static constant."""
 
-        # Set error margin
-        if not isinstance(error_margin, float):
-            raise TypeError("The error margin must be a float.")
-        if not error_margin >= 0:
-            raise ValueError("The error margin must be at least 0.")
-        self._error_margin = error_margin
-
+    def __init__(self) -> None:
+            
         # Set deque
         self._deque = deque()
     
-    @property
-    def error_margin(self) -> float:
-        """:return: The non-negative float indicating the error margin of this buffer used to determine whether two consecutive :py:class:`.TimeFrame` objects in the buffer occur directly after one another.
-        :rtype: float"""
-        return self._error_margin
-
     @property
     def start_time(self) -> float:
         """:raises Exception: If the :py:meth:`time_frame_count` is 0.
@@ -156,13 +134,13 @@ class TimeFrameBuffer():
 
         :param time_frame: The :py:class:`.TimeFrame` to insert at the latest end of the buffer.
         :type time_frame: :py:class:`.TimeFrame`
-        :raises ValueError: If the insertion would break contiguity, i.e. if buffer contains :py:class:`.TimeFrame` objects and the caller attempts to insert a non :py:class:`.TimeFrame` for which the absolute difference between the :py:attr:`.TimeFrame.start_time` of the provided **time_frame** and the :py:attr:`~.TimeFrame.end_time` of the latest :py:class:`.TimeFrame` in the buffer is larger than :py:attr:`.TimeFrameBuffer.error_margin`.
+        :raises ValueError: If the insertion would break contiguity, i.e. if buffer contains :py:class:`.TimeFrame` objects and the caller attempts to insert a non :py:class:`.TimeFrame` for which the absolute difference between the :py:attr:`.TimeFrame.start_time` of the provided **time_frame** and the :py:attr:`~.TimeFrame.end_time` of the latest :py:class:`.TimeFrame` in the buffer is larger than :py:attr:`.TimeFrameBuffer.ERROR_MARGIN`.
         """
 
         # Append new time frame to the buffer
         if not isinstance(time_frame, TimeFrame):
             raise TypeError("The time frame must be a TimeFrame object.")
-        if not abs(time_frame.start_time - self.end_time) <= self._error_margin:
+        if not abs(time_frame.start_time - self.end_time) <= TimeFrameBuffer.ERROR_MARGIN:
             raise ValueError("The start time of the to be inserted time frame must be equal to the current end time of the buffer, up to the accepted error margin.")
         self._deque.insert_at_head(data=time_frame)
 
@@ -189,83 +167,39 @@ class TimeFrameBuffer():
             tmp = list(self._deque)
             self._deque.clear()
             return tmp
-    
-class Port():
-    """A port is supposed to sit at an area for which it links a :py:class:`.TimeFrameBuffer` to a :py:class:`.Connection` such that time frames can be sent or received.
-    Every :py:class:`.Area` should have at least one :py:class:`.Port` as input and at least one as output. An exception to this are the source and sink nodes of the overall model which only need to have input ports OR output ports.
-    
-    :param area: Sets the :py:attr:`~.Port.area` property of this port.
-    :type area: :py:class:`.Area`
-    :param time_frame_buffer: Sets the :py:attr:`~.Port.time_frame_buffer` property of this port.
-    :type time_frame_buffer: :py:class:`.TimeFrameBuffer`
-    :param connection: Sets the :py:attr:`~.Port.connection` property of this port.
-    :type connection: :py:class:`.Connection`
-    """
-
-    def __init__(self, area: "Area", time_frame_buffer: TimeFrameBuffer, connection: "Connection" = None) -> None:
-
-        # Set area
-        if not isinstance(area, Area):
-            raise TypeError("The area must be a Area object.")
-        self._area = area
-
-        # Set the buffer
-        if not isinstance(time_frame_buffer, TimeFrameBuffer):
-            raise TypeError("The time_frame_buffer must be a TimeFrameBuffer object.")
-        self._time_frame_buffer = time_frame_buffer
-
-        # Set connection
-        if not isinstance(connection, Connection):
-            raise TypeError("The connection must be a Connection object.")
-        self._connection = connection
-
-    @property
-    def area(self) -> "Area":
-        """:return: The :py:class:`.Area` to which this port belongs.
-        :rtype: :py:class:`.Area`
-        """
-        return self._area
-
-    @property
-    def time_frame_buffer(self) -> TimeFrameBuffer:
-        """:return: The :py:class:`.TimeFrameBuffer` of this port.
-        :rtype: :py:class:`TimeFrameBuffer`
-        """
-        return self._time_frame_buffer
-    
-    def send(self) -> None:
-        """Passes all :py:class:`.TimeFrame` objects that are currently in the buffer to the :py:meth:`~.Port.connection` of self.
-        """
-
-        # Send all time frames in the buffer to the connection
-        while self.time_frame_buffer.time_frame_count > 0:
-            self._connection.forward(time_frame=self._time_frame_buffer.pop())
-                    
+            
 class Connection(nn.Module):
-    """A connection between two :py:class:`.Port` objects. This is analogous to a neural tract between areas of a biological neural network that not only sends information but also converts it between the reference frames of the input and output area.
+    """A connection between an :py:class:`Area` and a :py:class:`.TimeFrameBuffer`. This is analogous to a neural tract between areas of a biological neural network that not only sends information but also converts it between the reference frames of the input and output area.
 
-    :param input_area: Sets the :py:meth:`~Connection.input_area` of this connection. 
-    :type input_area: :py:class:`.Area`
-    :param output_port: Sets the :py:meth:`~Connection.output_port` of this connection.
-    :type output_port: :py:class:`.Port`
+    :param input_area_index: Sets the :py:meth:`~Connection.input_area_index` of this connection. 
+    :type input_area_index: int
+    :param output_area_index: Sets the :py:meth:`~Connection.output_area_index` of this connection. 
+    :type output_area_index: int
+    :param output_time_frame_buffer: Sets the :py:meth:`~Connection.output_time_frame_buffer` of this connection.
+    :type output_time_frame_buffer: :py:class:`.TimeFrameBuffer`
     :param transformation: Sets the :py:meth:`~.Connection.transformation` of the connection.
     :type transformation: torch.nn.Module, optional, defaults to :py:class:`torch.nn.Identity`
     """
 
-    def __init__(self, input_area: "Area", output_port: Port, transformation: nn.Module = nn.Identity()) -> None:
+    def __init__(self, input_area_index: int, output_area_index: int, output_time_frame_buffer: TimeFrameBuffer, transformation: nn.Module = nn.Identity()) -> None:
         
         # Call the parent constructor
         super().__init__()
 
-        # Set input area
-        if not isinstance(input_area, Area):
-            raise TypeError("Input area must be an Area object.")
-        self._input_area = input_area
+        # Set input area index
+        if not isinstance(input_area_index, int):
+            raise TypeError("The input_area_index must be an int.")
+        self._input_area_index = input_area_index
 
-        # Set output port
-        if not isinstance(output_port, Port):
-            raise TypeError("Output port must be a Port object.")
-        self._output_port = output_port
+        # Set output area index
+        if not isinstance(output_area_index, int):
+            raise TypeError("The output_area_index must be an int.")
+        self._output_area_index = output_area_index
+
+        # Set output time frame buffer
+        if not isinstance(output_time_frame_buffer, TimeFrameBuffer):
+            raise TypeError("The output_time_frame_buffer must be a TimeFrameBuffer object.")
+        self._output_time_frame_buffer = output_time_frame_buffer
         
         # Set transformation
         if not isinstance(transformation, nn.Module):
@@ -273,18 +207,25 @@ class Connection(nn.Module):
         self._transformation = transformation
 
     @property
-    def input_area(self) -> "Area":
-        """:return: The area that is the source of the connection.
-        :rtype: :py:class:`.Area`
+    def input_area_index(self) -> int:
+        """:return: The index of the area that is the source of the connection.
+        :rtype: int
         """
-        return self._input_area
+        return self._input_area_index
     
     @property
-    def output_port(self) -> Port:
-        """:return: The port that is the target of the connection.
-        :rtype: :py:class:`.Port`
+    def output_area_index(self) -> int:
+        """:return: The index of the area that is the target of the connection.
+        :rtype: int
         """
-        return self._output_port
+        return self._output_area_index
+    
+    @property
+    def output_time_frame_bufer(self) -> TimeFrameBuffer:
+        """:return: The time frame buffer that is the target of the connection.
+        :rtype: :py:class:`.TimeFrameBuffer`
+        """
+        return self._output_time_frame_buffer
 
     @property
     def transformation(self) -> nn.Module:
@@ -294,7 +235,7 @@ class Connection(nn.Module):
         return self.__transformation
     
     def forward(self, time_frame: TimeFrame) -> None:
-        """Applies the :py:meth:`~.Connection.transformation` to the given **time_frame** and inserts it into the :py:meth:`~.Port.time_frame_buffer` of the :py:meth:`~.Connection.output_port` of self.
+        """Applies the :py:meth:`~.Connection.transformation` to the given **time_frame** and inserts it into the :py:meth:`~.Connection.output_time_frame_buffer` of self.
         """
 
         # Check if the time frame is valid
@@ -307,8 +248,8 @@ class Connection(nn.Module):
         # Create a new time frame with the transformed state
         new_time_frame = TimeFrame(state=transformed_time_frame, index=time_frame.index, start_time=time_frame.start_time, duration=time_frame.duration)
         
-        # Insert the new time frame into the output port's buffer
-        self._output_port.time_frame_buffer.insert(new_time_frame)
+        # Insert the new time frame into the output time_frame_buffer's buffer
+        self._output_time_frame_buffer.insert(new_time_frame)
   
 class Area(nn.Module):
     """A area corresponds to a small population of biological neurons that jointly hold one representation. It has a state that is updated by transforming and aggregating inputs from other areas.
@@ -317,8 +258,8 @@ class Area(nn.Module):
     :type index: int
     :param initial_state: Sets the :py:meth:`~.Area.state` of this area. 
     :type initial_state: torch.Tensor | List[torch.Tensor]
-    :param input_ports: Sets the :py:meth:`~.Area.input_ports` of this area. 
-    :type input_ports: Dict[int, :py:class:`.Port`]
+    :param input_time_frame_buffers: Sets the :py:meth:`~.Area.input_time_frame_buffers` of this area. 
+    :type input_time_frame_buffers: Dict[int, :py:class:`.TimeFrameBuffer`]
     :param output_connections: Sets the :py:meth:`~.Area.output_connections` of this area.
     :type output_connections: Dict[int, :py:class:`.Connection`]
     :param update_rate: Sets the :py:meth:`~.Area.update_rate` of this area.
@@ -329,7 +270,10 @@ class Area(nn.Module):
     :type processing_time: float, optional, defaults to 0
     """
     
-    def __init__(self, index: int, initial_state: torch.Tensor | List[torch.Tensor], input_ports: Dict[int, Port], output_connections: Dict[int, Connection], update_rate: float, transformation: nn.Module, processing_time: float = 0) -> None:
+    TIME_AXIS = 1
+    """The time axis of this area. This is the axis along which the time frames are concatenated when being read from a :py:class:`.TimeFrameBuffer`."""
+
+    def __init__(self, index: int, initial_state: torch.Tensor | List[torch.Tensor], input_time_frame_buffers: Dict[int, TimeFrameBuffer], output_connections: Dict[int, Connection], update_rate: float, transformation: nn.Module, processing_time: float = 0) -> None:
         
         # Call the parent constructor
         super().__init__()
@@ -350,20 +294,20 @@ class Area(nn.Module):
             raise TypeError(f"Initial state of area {index} must be a :py:class:`~torch.Tensor`.")
         self._state = initial_state
 
-        # Input ports
-        if not isinstance(input_ports, dict):
-            raise TypeError(f"Input ports for area {index} must be a dictionary where each key is an area index and each value is a port object.")
-        if not all(isinstance(port, Port) for port in input_ports.values()):
-            raise TypeError(f"All values in the input_ports dictionary of area {index} must be Port objects.")
-        self._input_ports = input_ports
+        # Set input time_frame_buffers
+        if not isinstance(input_time_frame_buffers, dict):
+            raise TypeError(f"The input_time_frame_buffers for area {index} must be a dictionary where each key is an area index and each value is a TimeFrameBuffer object.")
+        if not all(isinstance(time_frame_buffer, TimeFrameBuffer) for time_frame_buffer in input_time_frame_buffers.values()):
+            raise TypeError(f"All values in the input_time_frame_buffers dictionary of area {index} must be TimeFrameBuffer objects.")
+        self._input_time_frame_buffers = input_time_frame_buffers
         
         # Output connections
         if not isinstance(output_connections, dict):
             raise TypeError(f"Output connections for area {index} must be a dictionary where each key is an area index and each value is a Connection object.")
-        if not all(isinstance(port, Connection) for port in output_connections.values()):
+        if not all(isinstance(connection, Connection) for connection in output_connections.values()):
             raise TypeError(f"All values in the output_connections dictionary of area {index} must be Connection objects.")
         self._output_connections = output_connections
-
+            
         # Set update rate
         if not isinstance(update_rate, float):
             raise TypeError(f"The update rate of area {index} must be a float.")
@@ -399,15 +343,15 @@ class Area(nn.Module):
         return self._state
 
     @property
-    def input_ports(self) -> Dict[int, Port]:
-        """:return: A dictionary where each key is an area index and each value is a port object. These input ports accumulate incoming :py:class:`.TimeFrame` objects.
-        :rtype: Dict[int, Port]
+    def input_time_frame_buffers(self) -> Dict[int, TimeFrameBuffer]:
+        """:return: A dictionary where each key is an area index and each value is a TimeFrameBuffer object. These input buffers accumulate incoming :py:class:`.TimeFrame` objects.
+        :rtype: Dict[int, TimeFrameBuffer]
         """
-        return self._input_ports
+        return self._input_time_frame_buffers
     
     @property
     def output_connections(self) -> Dict[int, Connection]:
-        """:return: A dictionary where each key is an area index and each value is a :py:class:`.Connection` object. These output connections are used to send the updated state of this area to the :py:class:`.Port` objects of other areas.
+        """:return: A dictionary where each key is an area index and each value is a :py:class:`.Connection` object. These output connections are used to send the updated state of this area to the :py:class:`.TimeFrameBuffer` objects of other areas.
         :rtype: Dict[int, Connection]
         """
         return self._output_connections
@@ -431,30 +375,30 @@ class Area(nn.Module):
         return self._processing_time
 
     def forward(self) -> None:
-        """Processes the time frames from the :py:meth:`~.Area.input_ports` using :py:meth:`~.Area.transformation` of self and passes the result to the :py:meth:`~.Area.output_connections`.
-        As a side-effect, the :py:meth:`~.Area.input_ports` of this area cleared and the :py:meth:`~.Area.state` of this area is updated.
+        """Processes the time frames from the :py:meth:`~.Area.input_time_frame_buffers` using :py:meth:`~.Area.transformation` of self and passes the result to the :py:meth:`~.Area.output_connections`.
+        As a side-effect, the :py:meth:`~.Area.input_time_frame_buffers` of this area cleared and the :py:meth:`~.Area.state` of this area is updated.
         """
 
-        # Iterate all input ports and clear their buffers
-        states = {self._index: self._state}
-        longest_duration = sys.float_info.min # The longest duration of buffers among the input ports
+        # Iterate all input time_frame_buffers and clear them
+        states = {}
+        longest_duration = sys.float_info.min # The longest duration of buffers among the input_time_frame_buffers
         current_time = sys.float_info.min # The current time of the latest time frame
-        for area_index, port in self._input_ports.items():
+        for area_index, time_frame_buffer in self._input_time_frame_buffers.items():
             
             # Update the times
-            longest_duration = max(longest_duration, port.time_frame_buffer.duration)
-            current_time = max(current_time, port.time_frame_buffer.end_time)
+            longest_duration = max(longest_duration, time_frame_buffer.time_frame_buffer.duration)
+            current_time = max(current_time, time_frame_buffer.time_frame_buffer.end_time)
 
-            # Get all time frames from the current input port
-            time_frames = port.time_frame_buffer.clear()
+            # Get all time frames from the current input_time_frame_buffer
+            time_frames = time_frame_buffer.time_frame_buffer.clear()
             if len(time_frames) > 0:
-                states[area_index] = torch.concat([time_frame.state for time_frame in time_frames], dim=port.time_frame_buffer.time_axis)
+                states[area_index] = torch.concat([time_frame.state for time_frame in time_frames], dim=Area.TIME_AXIS)
                 
             else:
                 states[area_index] = None
 
         # Apply transformation to the states
-        self._state = self._transformation.forward(states)
+        self._state = self._transformation.forward([self._state, states])
 
         # Create a new time frame for the current state
         new_time_frame = TimeFrame(state=self._state, index=self._produced_time_frames, start_time=current_time+self._processing_time-longest_duration, duration=longest_duration)
@@ -466,82 +410,50 @@ class Area(nn.Module):
 
         return
 
+class TimeAverageThenStateConcatenateThenTransformLinear(nn.Module):
+    """An :py:class:`.Area` that first averages the time frames for each input buffer, then concatenates them together with the area's state along their last axis and finally applies a linear transformation.
+    Note:
+    
+    * The state of the calling :py:class:`.Area` is assumed to be a mere torch.Tensor object, i.e. it is not a list of torch.Tensor objects.
+    * The input states of the other :py:class:`.Area`s are assumed to be torch.Tensor objects of shape [instance count, time frame count, dimensionality]. 
+
+    :param input_dimensionality: The dimensionality of the input. This is the sum of the dimensionalities of all inputs (inclduing the state of the calling area).
+    :type input_dimensionality: int
+    :param output_dimensionality: The dimensionality that the output state shall have.
+    :type output_dimensionality: int
+    """
+
+    def __init__(self, input_dimensionality: int, output_dimensionality: int) -> None:
+        
+        # Call the parent constructor
+        super().__init__()
+
+        # Set linear transformation
+        self.linear = nn.Linear(input_dimensionality, output_dimensionality)
+
+    def forward(self, inputs: Tuple[torch.Tensor, List[torch.Tensor]]) -> torch.Tensor:
+        """Applies the main calculation of this module to the given **inputs** and returns the result.
+
+        :param inputs: A tuple of two elements. The first element corresponds to the :py:meth:`~.Area.state` of the calling area. The second element is a list of torch.Tensor objects that are extracted and concatenated from each of the :py:meth:`~.Area.input_time_frame_buffers` of the calling area. 
+        :type inputs: Tuple[torch.Tensor, List[torch.Tensor]]
+        :return: The result of the main calculation.
+        :rtype: torch.Tensor
+        """
+        # Unpack inputs
+        calling_area_state, input_states = inputs
+
+        # Concatenate averaged the time frames
+        concatenated = [None] * len(input_states) + 1
+        concatenated[0] = calling_area_state
+        for i, input_state in enumerate(input_states):
+            concatenated[i+1] = torch.mean(input_state, dim=Area.TIME_AXIS)
+        concatenated = torch.concat(concatenated, dim=-1)
+        
+        # Apply linear transformation
+        return self.linear(concatenated)
+
+# TODO: Use a main loop and then based on update rates of each area, call the forward method of each area
 class BrIANN():
     def __init__(self, adjacency_matrix: np.ndarray):
         """"""
         pass
-
-    def step(self) -> None:
-        """Advances the network by 1 time step by letting each area transform the inputs from its :py:attr:`~.Area.input_ports` and pass the result to its :py:attr:`~.Area.output_port`. """
-        for area in self._areas:
-            area.forward()
-        return
-
-'''
-class InputAccumulationStrategy(ABC):
-    """Abstract base class for input aggregation strategies. A strategy provides a method to curate the input from the :py:attr:`~.Area.input_ports` of an :py:class:`.Area` such that it can transform its input to an output."""
-
-    @abstractmethod
-    def curate(self, input_ports: Dict[int, Port]) -> torch.Tensor:
-        """Curates a tensor from the :py:attr:`~.Area.input_ports` of an :py:class:`.Area` such that it can transform its input to an output. The input ports are assumed to be in the same order as the areas in the network."""
-        pass
-
-class SummativeInputAggregationStrategy(InputAccumulationStrategy):
-
-    def __init__(self) -> None:
-        """An input aggregation strategy that sums the inputs from all input ports into a single :py:class:`~torch.Tensor`. It is assumed that the :py:attr:`~.Port.time_frame`s of all input input :py:class:`.Port` have the same shape."""
-        super().__init__()
-    
-    def curate(self, input_ports: Dict[int, Port]) -> torch.Tensor:
-        """Sums the inputs from all input :py:class:`.Port`s into a single :py:class:`~torch.Tensor`. It is assumed that the :py:attr:`~.Port.time_frame`s of all input input :py:class:`.Port` have the same shape."""
-        if not isinstance(input_ports, dict):
-            raise TypeError("Input ports must be a dictionary where each key is an area index and each value is a port object.")
-        if not all(isinstance(port, Port) for port in input_ports.values()):
-            raise TypeError("All values in the input ports dictionary must be Port objects.")
-        
-        # Sum the inputs from all input ports
-        tmp = torch.cat([port.time_frame[torch.newaxis,:] for port in input_ports.values()], dim=0)
-        return tmp.sum(dim=0)
-
-class Package():
-    """A class that stores minimal meta-data about a :py:class:`.TimeFrame` object to be sent from one :py:class:`.Area` to another.
-    
-    :param time_frame: The :py:class:`.TimeFrame` object to be sent.
-    :type time_frame: :py:class:`.TimeFrame`
-    :param sender: The :py:class:`.Area` from which the **time_frame** is sent.
-    :type sender: :py:class:`.Area`
-    :param receiver: The :py:class:`.Area` to which the **time_frame** is sent.
-    :type sender: :py:class:`.Area`
-    """
-
-    def __init__(self, time_frame: TimeFrame, sender: "Area", receiver: "Area"):
-        
-        # Set properties
-        if not isinstance(time_frame, TimeFrame):
-            raise TypeError("The time frame must be a TimeFrame object.")
-        self._time_frame = time_frame
-
-        if not isinstance(sender, Area):
-            raise TypeError("The sender must be an Area object.")
-        self._sender = sender
-
-        if not isinstance(receiver, Area):
-            raise TypeError("The receiver must be an Area object.")
-        self._sender = sender
-
-    @property
-    def time_frame(self) -> TimeFrame:
-        """The content of this package."""
-        return self._time_frame
-    
-    @property
-    def sender(self) -> "Area":
-        """The :py:class:`.Area` from which the package is sent."""
-        return self._sender
-    
-    @property
-    def receiver(self) -> "Area":
-        """The :py:class:`.Area` to which the package is sent."""
-        return self._receiver        
-        
-'''
