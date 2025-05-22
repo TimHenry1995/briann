@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from typing import List, Dict
-import system as sys
+import sys
 from abc import ABC, abstractmethod
 from collections import deque
 
