@@ -1,27 +1,76 @@
 {
-    "Connections":
+    "connections":
     [
         {
-            "input_area_index": 0,
-            "output_area_index": 1
+            "from_area_index": "source",
+            "to_area_index": 0,
+            "transformation": "torch.nn.Identity()"
         },
         {
-            "input_area_index": 1,
-            "output_area_index": 2
+            "from_area_index": "source",
+            "to_area_index": 1,
+            "transformation": "torch.nn.Linear(2,1)"
         },
         {
-            "input_area_index": 0,
-            "output_area_index": 2
+            "from_area_index": 0,
+            "to_area_index": 1,
+            "transformation": "torch.nn.Linear(2, 1)"
+        },
+        {
+            "from_area_index": 1,
+            "to_area_index": 2,
+            "transformation": "torch.nn.Linear(3, 2)"
+        },
+        {
+            "from_area_index": 0,
+            "to_area_index": 2,
+            "transformation": "torch.nn.Linear(2, 2)"
+        },
+        {
+            "from_area_index": 2,
+            "to_area_index": 0,
+            "transformation": "torch.nn.Linear(2, 1)"
+        },
+        {
+            "from_area_index": 1,
+            "to_area_index": "target",
+            "transformation": "torch.nn.Linear(3, 10)"
+        },
+        {
+            "from_area_index": 2,
+            "to_area_index": "target",
+            "transformation": "torch.nn.Linear(2, 10)"
         }
     ],
 
-    "Areas": 
+    "areas": 
     [
         {
+            "index": "source",
+            "update_rate": 10
+        },
+        {
             "index": 0,
-            "initial_state": "torch.zeros(2,3)",
-            "update_rate": 0.1,
-            "transformation": "TimeAverageThenStateConcatenateThenTransformLinear(input_dimensionality=10, output_dimensionality=3"
+            "initial_state": "torch.zeros(2)",
+            "transformation": "TimeAverageThenStateConcatenateThenTransformLinear(input_dimensionality=5, output_dimensionality=2",
+            "update_rate": 10
+        },
+        {
+            "index": 1,
+            "initial_state": "torch.zeros(3)",
+            "transformation": "TimeAverageThenStateConcatenateThenTransformLinear(input_dimensionality=5, output_dimensionality=3",
+            "update_rate": 5
+        },
+        {
+            "index": 2,
+            "initial_state": "torch.zeros(2)",
+            "transformation": "TimeAverageThenStateConcatenateThenTransformLinear(input_dimensionality=6, output_dimensionality=2",
+            "update_rate": 2
+        },
+        {
+            "index": "target",
+            "initial_state": "torch.zeros(10)",
+            "update_rate": 1
         }
     ]
 }

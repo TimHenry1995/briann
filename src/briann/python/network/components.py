@@ -2,11 +2,11 @@
 
 import numpy as np
 import torch
-import torch.nn as nn
 from typing import List, Dict, Tuple
 import sys
 from abc import ABC, abstractmethod
 from collections import deque
+import json
 
 class TimeFrame():
     """A time frame in the simulation that holds a temporary state of an :py:class:`.Area`. Note, this constructor automatically computes the :py:attr:`~.TimeFrame.end_time` based on the provided `start_time` and `duration`.
@@ -21,7 +21,7 @@ class TimeFrame():
     :type duration: float
     """
     
-    def __init__(self, state: torch.Tensor, index: int, start_time: float, duration: float) -> None:
+    def __init__(self, state: torch.Tensor, index: int, start_time: float, duration: float) -> "TimeFrame":
         
         # Set state
         if not isinstance(state, torch.Tensor):
@@ -88,7 +88,7 @@ class TimeFrameBuffer():
     ERROR_MARGIN = 1e-10 
     """The error margin used to determine whether two time frames are contiguous. This is a static constant."""
 
-    def __init__(self) -> None:
+    def __init__(self) -> "TimeFrameBuffer":
             
         # Set deque
         self._deque = deque()
@@ -168,33 +168,33 @@ class TimeFrameBuffer():
             self._deque.clear()
             return tmp
             
-class Connection(nn.Module):
+class Connection(torch.nn.Module):
     """A connection between an :py:class:`Area` and a :py:class:`.TimeFrameBuffer`. This is analogous to a neural tract between areas of a biological neural network that not only sends information but also converts it between the reference frames of the input and output area.
 
-    :param input_area_index: Sets the :py:meth:`~Connection.input_area_index` of this connection. 
-    :type input_area_index: int
-    :param output_area_index: Sets the :py:meth:`~Connection.output_area_index` of this connection. 
-    :type output_area_index: int
+    :param from_area_index: Sets the :py:meth:`~Connection.from_area_index` of this connection. 
+    :type from_area_index: int
+    :param to_area_index: Sets the :py:meth:`~Connection.to_area_index` of this connection. 
+    :type to_area_index: int
     :param output_time_frame_buffer: Sets the :py:meth:`~Connection.output_time_frame_buffer` of this connection.
     :type output_time_frame_buffer: :py:class:`.TimeFrameBuffer`
     :param transformation: Sets the :py:meth:`~.Connection.transformation` of the connection.
     :type transformation: torch.nn.Module, optional, defaults to :py:class:`torch.nn.Identity`
     """
 
-    def __init__(self, input_area_index: int, output_area_index: int, output_time_frame_buffer: TimeFrameBuffer, transformation: nn.Module = nn.Identity()) -> None:
+    def __init__(self, from_area_index: int, to_area_index: int, output_time_frame_buffer: TimeFrameBuffer, transformation: torch.nn.Module = torch.nn.Identity()) -> "Connection":
         
         # Call the parent constructor
         super().__init__()
 
         # Set input area index
-        if not isinstance(input_area_index, int):
-            raise TypeError("The input_area_index must be an int.")
-        self._input_area_index = input_area_index
+        if not isinstance(from_area_index, int):
+            raise TypeError("The from_area_index must be an int.")
+        self._from_area_index = from_area_index
 
         # Set output area index
-        if not isinstance(output_area_index, int):
-            raise TypeError("The output_area_index must be an int.")
-        self._output_area_index = output_area_index
+        if not isinstance(to_area_index, int):
+            raise TypeError("The to_area_index must be an int.")
+        self._to_area_index = to_area_index
 
         # Set output time frame buffer
         if not isinstance(output_time_frame_buffer, TimeFrameBuffer):
@@ -202,23 +202,23 @@ class Connection(nn.Module):
         self._output_time_frame_buffer = output_time_frame_buffer
         
         # Set transformation
-        if not isinstance(transformation, nn.Module):
-            raise TypeError("Transformation must be a nn.Module object.")
+        if not isinstance(transformation, torch.nn.Module):
+            raise TypeError("Transformation must be a torch.nn.Module object.")
         self._transformation = transformation
 
     @property
-    def input_area_index(self) -> int:
+    def from_area_index(self) -> int:
         """:return: The index of the area that is the source of the connection.
         :rtype: int
         """
-        return self._input_area_index
+        return self._from_area_index
     
     @property
-    def output_area_index(self) -> int:
+    def to_area_index(self) -> int:
         """:return: The index of the area that is the target of the connection.
         :rtype: int
         """
-        return self._output_area_index
+        return self._to_area_index
     
     @property
     def output_time_frame_bufer(self) -> TimeFrameBuffer:
@@ -228,7 +228,7 @@ class Connection(nn.Module):
         return self._output_time_frame_buffer
 
     @property
-    def transformation(self) -> nn.Module:
+    def transformation(self) -> torch.nn.Module:
         """:return: The transformation that is applied to the input to obtain the output.
         :rtype: torch.nn.Module
         """
@@ -251,35 +251,37 @@ class Connection(nn.Module):
         # Insert the new time frame into the output time_frame_buffer's buffer
         self._output_time_frame_buffer.insert(new_time_frame)
   
-class Area(nn.Module):
+class Area(torch.nn.Module):
     """A area corresponds to a small population of biological neurons that jointly hold one representation. It has a state that is updated by transforming and aggregating inputs from other areas.
-        
+    The area assumes that instances are enumerated along :py:attr:`~.Area.BATCH_AXIS` and that time frames are concatenated along :py:attr:`~.Area.TIME_AXIS`.    
+    
     :param index: Sets the :py:attr:`~.Area.index` of this area.
-    :type index: int
+    :type index: int | str
     :param initial_state: Sets the :py:meth:`~.Area.state` of this area. 
     :type initial_state: torch.Tensor | List[torch.Tensor]
     :param input_time_frame_buffers: Sets the :py:meth:`~.Area.input_time_frame_buffers` of this area. 
     :type input_time_frame_buffers: Dict[int, :py:class:`.TimeFrameBuffer`]
     :param output_connections: Sets the :py:meth:`~.Area.output_connections` of this area.
     :type output_connections: Dict[int, :py:class:`.Connection`]
-    :param update_rate: Sets the :py:meth:`~.Area.update_rate` of this area.
-    :type update_rate: float
     :param transformation: Sets the :py:meth:`~.Area.transformation` of this area.
     :type transformation: torch.nn.Module
-    :param processing_time: Sets the :py:meth:`~.Area.processing_time` of this area.
-    :type processing_time: float, optional, defaults to 0
+    :param update_rate: Sets the :py:meth:`~.Area.update_rate` of this area.
+    :type update_rate: float
     """
+
+    BATCH_AXIS = 0
+    """The axis along which instances are enumerated within a batch."""
     
     TIME_AXIS = 1
     """The time axis of this area. This is the axis along which the time frames are concatenated when being read from a :py:class:`.TimeFrameBuffer`."""
 
-    def __init__(self, index: int, initial_state: torch.Tensor | List[torch.Tensor], input_time_frame_buffers: Dict[int, TimeFrameBuffer], output_connections: Dict[int, Connection], update_rate: float, transformation: nn.Module, processing_time: float = 0) -> None:
+    def __init__(self, index: int | str, initial_state: torch.Tensor | List[torch.Tensor], input_time_frame_buffers: Dict[int, TimeFrameBuffer], output_connections: Dict[int, Connection], transformation: torch.nn.Module, update_rate: float) -> "Area":
         
         # Call the parent constructor
         super().__init__()
         
         # Set index
-        if not isinstance(index, int):
+        if not (isinstance(index, int) or isinstance(index, str)):
             raise TypeError("The index must be an int.")
         self._index = index
         
@@ -308,24 +310,20 @@ class Area(nn.Module):
             raise TypeError(f"All values in the output_connections dictionary of area {index} must be Connection objects.")
         self._output_connections = output_connections
             
+        # Set transformation
+        if not isinstance(transformation, torch.nn.Module):
+            raise TypeError(f"The transformation of area {index} must be a torch.nn.Module object.")
+        self._transformation = transformation
+
         # Set update rate
         if not isinstance(update_rate, float):
             raise TypeError(f"The update rate of area {index} must be a float.")
         if not update_rate > 0:
-            raise ValueError(f"The update rate of area {index} must be greater than 0.")    
+            raise ValueError(f"The update rate of area {index} must be greater than 0.") 
         self._update_rate = update_rate
 
-        # Set transformation
-        if not isinstance(transformation, nn.Module):
-            raise TypeError(f"The transformation of area {index} must be a nn.Module object.")
-        self._transformation = transformation
-
         # Set processing time
-        if not isinstance(processing_time, float):
-            raise TypeError(f"The processing time of area {index} must be a float.")    
-        if not processing_time >= 0:
-            raise ValueError(f"The processing time of area {index} must be greater than or equal to 0.")
-        self._processing_time = processing_time
+        self._processing_time = 1/update_rate
 
         # Set the number of produced time frames
         self._produced_time_frames = 0
@@ -357,20 +355,20 @@ class Area(nn.Module):
         return self._output_connections
 
     @property
+    def transformation(self) -> torch.nn.Module:
+        """:return: The transformation of this area.
+        :rtype: torch.nn.Module"""
+        return self._transformation
+    
+    @property
     def update_rate(self) -> float:
         """:return: The update rate of this area.
         :rtype: float"""
         return self._update_rate
     
     @property
-    def transformation(self) -> nn.Module:
-        """:return: The transformation of this area.
-        :rtype: torch.nn.Module"""
-        return self._transformation
-
-    @property
     def processing_time(self) -> float:
-        """:return: The processing time of this area. This is a non-negative float that indicates how long it takes for this area to process the input time frames and produce an output time frame. It is not the actual processing time on the executing device but a hypothetical processing time that corresponds to the time that the corresponding brain area would take.
+        """:return: The processing time of this area. This is a positive float that indicates how long it takes for this area to process the input time frames and produce an output time frame. It is equal to 1/:py:meth:`~.Area.update_rate`.
         :rtype: float"""
         return self._processing_time
 
@@ -410,7 +408,64 @@ class Area(nn.Module):
 
         return
 
-class TimeAverageThenStateConcatenateThenTransformLinear(nn.Module):
+class Source(Area):
+    """_summary_
+
+    :param output_connections: Sets the :py:meth:`~.Area.output_connections` of this area.
+    :type output_connections: Dict[int, :py:class:`.Connection`]
+    :param update_rate: Sets the :py:meth:`~.Area.update_rate` of this area.
+    :type update_rate: float
+    """
+
+
+    def __init__(self, output_connections: Dict[int, Connection], update_rate: float) -> "Source":
+
+        # Call the parent constructor
+        super().__init__(index="source",
+                         initial_state=torch.zeros(1, 1),  # Initial state is a dummy tensor
+                         input_time_frame_buffers={},
+                         output_connections=output_connections,
+                         transformation=torch.nn.Identity(),
+                         update_rate=update_rate)
+
+    def load(self, X: torch.Tensor, duration: float) -> None:
+        """Starts the simulation with the given stimuli **X** as input. This involves splitting **X** along its specified **time_axis** into :py:class:`.TimeFrame` objects,
+        each representing **stimulus_step_size** seconds of the input.
+
+        :param X: The stimuli to be be processed by the model. It is assumed that the first axis is the batch axis and that there exists a time axis at index **time_axis**. All stimuli in the batch are assumed to have the same stimulus **duration**.
+        :type X: torch.Tensor
+        :param duration: A positive float indicating the duration of the stimuli in **X**, given in seconds.
+        :type duration: float
+        """
+            
+        # Check input validity
+        if not isinstance(X, torch.Tensor):
+            raise TypeError("The input X must be a torch.Tensor object.")
+        if not isinstance(duration, float):
+            raise TypeError("The duration must be a float.")
+        if not duration > 0:
+            raise ValueError("The duration must be greater than 0.")
+        if Area.TIME_AXIS >= len(X.shape):
+            raise ValueError(f"X does not have enough axes to have a time axis at index {Area.TIME_AXIS}.")
+        if not X.shape[Area.TIME_AXIS] >= duration * self._update_rate:
+            raise ValueError(f"The input X must have a shape of {X.shape[0]} x {int(duration / stimulus_step_size)} along the time axis {time_axis}.")
+        
+        # Create a time frame generator
+        def time_frame_generator(self, X: torch.Tensor, duration: float, stimulus_step_size: float, time_axis: int) -> TimeFrame:
+            # Iterate over the time frames of X
+            i = 0; j = (int)(X.shape[time_axis] / stimulus_step_size)
+            index = 0
+            while j < X.shape[time_axis]:
+                # Create a time frame from the current time frame of X
+                time_frame = TimeFrame(state=X[:, i:j, :], index=index, start_time=i * stimulus_step_size, duration=stimulus_step_size)
+                yield time_frame
+                i = j; j += (int)(X.shape[time_axis] / stimulus_step_size)
+                index += 1
+
+        self._time_frame_generator = time_frame_generator(self)
+
+
+class TimeAverageThenStateConcatenateThenTransformLinear(torch.nn.Module):
     """An :py:class:`.Area` that first averages the time frames for each input buffer, then concatenates them together with the area's state along their last axis and finally applies a linear transformation.
     Note:
     
@@ -423,7 +478,7 @@ class TimeAverageThenStateConcatenateThenTransformLinear(nn.Module):
     :type output_dimensionality: int
     """
 
-    def __init__(self, input_dimensionality: int, output_dimensionality: int) -> None:
+    def __init__(self, input_dimensionality: int, output_dimensionality: int) -> "TimeAverageThenStateConcatenateThenTransformLinear":
         
         # Call the parent constructor
         super().__init__()
@@ -452,8 +507,129 @@ class TimeAverageThenStateConcatenateThenTransformLinear(nn.Module):
         # Apply linear transformation
         return self.linear(concatenated)
 
-# TODO: Use a main loop and then based on update rates of each area, call the forward method of each area
-class BrIANN():
-    def __init__(self, adjacency_matrix: np.ndarray):
-        """"""
-        pass
+class BrIANN(torch.nn.Module):
+    """_summary_
+
+    :param batch_size: The batch size used when passing instances through the areas.
+    :type batch_size: int
+    :param configuration_file_path: The path to the configuration file.
+    :type configuration_file_path: str
+    """
+    SOURCE_AREA_INDEX = 0
+    """The index of the source area in the configuration file. This is used to identify the source area in the configuration file. It is a static constant and set to 0."""
+    
+    def __init__(self, batch_size: int, configuration_file_path: str) -> "BrIANN":
+        
+        # Call the parent constructor
+        super().__init__()
+
+        # Load the model based on the configuration
+        self._load_configuration(batch_size=batch_size, configuration_file_path=configuration_file_path)
+
+        # Set the target area index
+        self._TARGET_AREA_INDEX = len(self._areas) - 1
+
+    @property
+    def TARGET_AREA_INDEX(self) -> int:
+        """The index of the target area. This is used to identify the target area in the configuration file. It is set to None before initialization, but it will be automatically set to the largest index occuring in the configuration file during initialization."""
+        return self._TARGET_AREA_INDEX
+
+    def _load_configuration(self, batch_size: int, configuration_file_path: str) -> None:
+        """Loads the configuration from the given **configuration_file_path** and sets up the areas and connections.
+        :param batch_size: The batch size used when passing instances through the areas.
+        :type batch_size: int
+        :param configuration_file_path: The path to the configuration file.
+        :type configuration_file_path: str
+        """
+
+        with open(configuration_file_path, "r") as file:
+            configuration = json.load(file)
+        
+        # Set connections
+        self._connection_from = {}
+        self._connection_to = {}
+        for item in configuration["connections"]:
+            # Extract configuration
+            from_area_index = item["from_area_index"]
+            to_area_index = item["to_area_index"]
+            output_time_frame_buffer = TimeFrameBuffer()
+            transformation = exec(item["transformation"])
+            connection = Connection(from_area_index=from_area_index, to_area_index=to_area_index, output_time_frame_buffer=output_time_frame_buffer, transformation=transformation)
+            
+            # Insert the connection to the from array
+            if from_area_index not in self._connection_from: self._connection_from[from_area_index] = []
+            self._connection_from[from_area_index].append(connection)
+
+            # Insert the output connection to the to array
+            if to_area_index not in self._connection_to: self._connection_to[to_area_index] = []
+            self._connection_to[to_area_index].append(connection)
+
+        # Set areas
+        self._areas = {}
+        for item in configuration["areas"]:
+            # Unpack configuration
+            area_index = item["index"]
+
+            if area_index == "source": self._areas["source"] = Source(output_connections=self._connection_from[area_index], update_rate=item["update_rate"])
+            else:
+                # Prepare initial state
+                initial_state = exec(item["initial_state"]) # Can be a single tensor or a list of tensors
+                if isinstance(initial_state, list):
+                    for state in initial_state:
+                        state = torch.concatenate([state[torch.newaxis, :] for _ in range(batch_size)], dim=0) # The batch axis is the first axis
+                elif isinstance(initial_state, torch.Tensor):
+                    initial_state = torch.concatenate([initial_state[torch.newaxis, :] for _ in range(batch_size)], dim=0)
+                # No need for an else statement since exceptions will be raised by the area constructor if the initial state is not a tensor or a list of tensors.
+
+                # Prepare other parameters
+                input_time_frame_buffers = [connection.time_frame_buffer for connection in self._connection_to[area_index]]
+                output_connections = self._connection_from[area_index]
+                transformation = exec(item["transformation"]) if "transformation" in item.keys() else torch.nn.Identitiy()
+
+                # Create area
+                area = Area(index=area_index, 
+                            initial_state=initial_state, 
+                            input_time_frame_buffers=input_time_frame_buffers, 
+                            output_connections=output_connections, 
+                            transformation=transformation, 
+                            update_rate=item["update_rate"])
+                self._areas[area_index] = area
+
+    def start(self, X: torch.Tensor, duration: float, stimulus_step_size: float) -> None:
+        """Starts the simulation with the given stimuli **X** as input. This involves splitting **X** along :py:attr:`.Area.TIME_AXES` into :py:class:`.TimeFrame` 
+        objects, each representing a section of the input. The length of this section is equal to 1 divided by the update rate of the source area (specified in 
+        the configuration file), in seconds. Note that multiple consecutive time frames of the original **X** can be grouped into the same :py:class:`.TimeFrame` object, 
+        depending on the number of original time frames in **X** and the update rate of the source. 
+
+        :param X: The stimuli to be be processed by the model. It is assumed that instances of **X** are enumerated along :py:attr:`.Area.BATCH_AXIS` and the original time frames of **X** are enumerated along :py:attr:`.Area.TIME_AXIS`. All stimuli in the batch are assumed to have the same stimulus **duration**. **X** must have at least **duration** * source update rate many original time frames in order for the mapping to actual :py:class:`.TimeFrame` objects to work.
+        :type X: torch.Tensor
+        :param duration: A positive float indicating the duration of the stimuli in **X**, given in seconds.
+        :type duration: float
+        """
+        
+        # Provide X to the source area
+        self._areas[self.SOURCE_AREA_INDEX].load(X=X, duration=duration)
+
+        # Make the first step of the simulation
+
+    def step(self) -> torch.Tensor:
+        """Performs one step of the simulation by processing the next :py:class:`.TimeFrame` from the input stimuli and passing it through the areas.
+        This method needs to called repeatedly until all time frames have been processed.
+        """
+        
+        # Iterate all areas and call the forward method for those that are due next
+        for area 
+
+        # Get the next time frame
+        try:
+            time_frame = next(self._time_frame_generator)
+
+            # Feed time_frame from source to all areas that have this time frame as input
+            for connection in self._connection_from["source"]:
+                connection.forward(time_frame=time_frame)
+
+            # Take the time frames from all buffers of the target
+            for connection in self._connection_to["target"]:
+                connection.forward(time_frame=time_frame)
+        except StopIteration as exception:
+            raise exception
