@@ -1,12 +1,13 @@
-"THIS IS A TEST COMMEMNT"
+"This module collects all necessary components to build a BrIANN model."
 
 import numpy as np
 import torch
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Deque
 import sys
 from abc import ABC, abstractmethod
 from collections import deque
 import json
+import copy
 
 class TimeFrame():
     """A time frame in the simulation that holds a temporary state of an :py:class:`.Area`. Note, this constructor automatically computes the :py:attr:`~.TimeFrame.end_time` based on the provided `start_time` and `duration`.
@@ -148,7 +149,7 @@ class TimeFrameBuffer():
         """Removes the :py:class:`.TimeFrame` at the latest end of the buffer and returns it.
 
         :return: The :py:class:`.TimeFrame` at the latest end of the buffer.
-        :rtype: :py:class:`.TimeFrame
+        :rtype: :py:class:`.TimeFrame`
         :raises Exception: If the buffer is empty.
         """
         if self.time_frame_count == 0:
@@ -295,6 +296,7 @@ class Area(torch.nn.Module):
         elif not isinstance(initial_state, torch.Tensor):
             raise TypeError(f"Initial state of area {index} must be a :py:class:`~torch.Tensor`.")
         self._state = initial_state
+        self._initial_state = copy.deepcopy(initial_state)
 
         # Set input time_frame_buffers
         if not isinstance(input_time_frame_buffers, dict):
@@ -326,7 +328,10 @@ class Area(torch.nn.Module):
         self._processing_time = 1/update_rate
 
         # Set the number of produced time frames
-        self._produced_time_frames = 0
+        self._produced_time_frames_count = 0
+
+        # Set the last time frame dictionary which holds time frames from the buffers until the buffers are replenished
+        self._last_time_frames = {}
         
     @property
     def index(self) -> int:
@@ -372,6 +377,15 @@ class Area(torch.nn.Module):
         :rtype: float"""
         return self._processing_time
 
+    @property
+    def produced_time_frames_count(self) -> int:
+        """The number of time frames that have been produced by this area in the current trial. This is used to index the time frames that are produced by this area.
+        
+        :return: The number of produced time frames.
+        :rtype: int
+        """
+        return self._produced_time_frames_count
+
     def forward(self) -> None:
         """Processes the time frames from the :py:meth:`~.Area.input_time_frame_buffers` using :py:meth:`~.Area.transformation` of self and passes the result to the :py:meth:`~.Area.output_connections`.
         As a side-effect, the :py:meth:`~.Area.input_time_frame_buffers` of this area cleared and the :py:meth:`~.Area.state` of this area is updated.
@@ -379,46 +393,54 @@ class Area(torch.nn.Module):
 
         # Iterate all input time_frame_buffers and clear them
         states = {}
-        longest_duration = sys.float_info.min # The longest duration of buffers among the input_time_frame_buffers
-        current_time = sys.float_info.min # The current time of the latest time frame
         for area_index, time_frame_buffer in self._input_time_frame_buffers.items():
             
-            # Update the times
-            longest_duration = max(longest_duration, time_frame_buffer.time_frame_buffer.duration)
-            current_time = max(current_time, time_frame_buffer.time_frame_buffer.end_time)
-
             # Get all time frames from the current input_time_frame_buffer
             time_frames = time_frame_buffer.time_frame_buffer.clear()
             if len(time_frames) > 0:
-                states[area_index] = torch.concat([time_frame.state for time_frame in time_frames], dim=Area.TIME_AXIS)
-                
-            else:
-                states[area_index] = None
+                self.last_time_frames[area_index] = time_frames[-1] # Save the last time frame in case it needs to be put on hold
+                states[area_index] = torch.concat([time_frame.state.unsqueeze(Area.TIME_AXIS) for time_frame in time_frames], dim=Area.TIME_AXIS)
+            else: # The buffer for this area is empty, hence hold the most recent time frame's state
+                states[area_index] = copy.deepcopy(self._last_time_frames[area_index.state])
 
         # Apply transformation to the states
         self._state = self._transformation.forward([self._state, states])
 
         # Create a new time frame for the current state
-        new_time_frame = TimeFrame(state=self._state, index=self._produced_time_frames, start_time=current_time+self._processing_time-longest_duration, duration=longest_duration)
-        self._produced_time_frames += 1
+        new_time_frame = TimeFrame(state=self._state, index=self._produced_time_frames_count, start_time=self._produced_time_frames_count*self._processing_time, duration=self._processing_time)
+        self._produced_time_frames_count += 1
 
         # Pass the transformed states to the output connections
         for area_index, connection in self._output_connections.items():
             connection.forward(time_frame=new_time_frame)
 
-        return
+    def reset(self) -> None:
+        """Resets the :py:meth:`~.Area.state`, :py:meth:`~.Area.input_time_frame_buffers` and :py:meth:`~.Area.produced_time_frames_count` of this area to their initial values. This should be done before simulating a new trial."""
+        
+        # Reset the state
+        self._state = copy.deepcopy(self._initial_state)
+        
+        # Reset the produced time frames
+        self._produced_time_frames_count = 0
+
+        # Clear all input time frame buffers
+        for time_frame_buffer in self._input_time_frame_buffers.values():
+            time_frame_buffer.time_frame_buffer.clear()
 
 class Source(Area):
-    """_summary_
+    """TODO: _summary_
 
     :param output_connections: Sets the :py:meth:`~.Area.output_connections` of this area.
     :type output_connections: Dict[int, :py:class:`.Connection`]
     :param update_rate: Sets the :py:meth:`~.Area.update_rate` of this area.
     :type update_rate: float
+    :param cool_down_duration: Sets the :py:meth`.~.Source.cool_down_duration` of the source area.
+    :type cool_down_duration: float
+    :param hold_function: Sets the :py:meth:`~.Source.hold_function` of the source area.
+    :type hold_function: callable, optional, default to lambda last_state: torch.zeros_like(last_state)
     """
 
-
-    def __init__(self, output_connections: Dict[int, Connection], update_rate: float) -> "Source":
+    def __init__(self, output_connections: Dict[int, Connection], update_rate: float, cool_down_duration: float, hold_function: callable = lambda last_state: torch.zeros_like(last_state)) -> "Source":
 
         # Call the parent constructor
         super().__init__(index="source",
@@ -427,50 +449,120 @@ class Source(Area):
                          output_connections=output_connections,
                          transformation=torch.nn.Identity(),
                          update_rate=update_rate)
+        
+        # Set cool down duration
+        if not isinstance(cool_down_duration, float):
+            raise TypeError("The cool_down_duration must be a float.")
+        if not cool_down_duration >= 0:
+            raise ValueError("The cool_down_duration must be greater than or equal to 0.")
+        self._cool_down_duration = cool_down_duration
+        self._remaining_cool_down_duration = cool_down_duration
 
-    def load(self, X: torch.Tensor, duration: float) -> None:
-        """Starts the simulation with the given stimuli **X** as input. This involves splitting **X** along its specified **time_axis** into :py:class:`.TimeFrame` objects,
-        each representing **stimulus_step_size** seconds of the input.
+        # Set the hold function
+        if not isinstance(hold_function, callable):
+            raise TypeError("The hold_function must be a callable that takes as input a tensor which is equal to the state of the last TimeFrame object generated from the input to the simulation.")
+        self._hold_function = hold_function
 
-        :param X: The stimuli to be be processed by the model. It is assumed that the first axis is the batch axis and that there exists a time axis at index **time_axis**. All stimuli in the batch are assumed to have the same stimulus **duration**.
-        :type X: torch.Tensor
-        :param duration: A positive float indicating the duration of the stimuli in **X**, given in seconds.
-        :type duration: float
+        # Set the stimuli
+        self._stimuli = deque()
+
+    @property
+    def cool_down_duration(self) -> float:
+        """The cool down duration of the source area. This is the duration in seconds for which the source area shall hold the last state using :py:meth:`~.Source.hold_function` at the end of the simulation to let the other areas finish their processing.
+        
+        :return: The cool down duration.
+        :rtype: float
+        """
+        return self._cool_down_duration
+    
+    @property
+    def remaining_cool_down_duration(self) -> float:
+        """The remaining :py:meth:`~.Source.cool_down_duration` to be discounted once the current stimuli have been streamed. This is used to determine the end of the simulation.
+
+        :return: The cool down duration.
+        :rtype: float
+        """
+        return self._cool_down_duration
+    
+    @property
+    def hold_function(self) -> callable:
+        """The hold function that is called whenever the source area has no more time frames to process. It is used to hold the state of the source areas last :py:class:`.TimeFrame` object for :py:meth:`~.Source.cool_down_duration` seconds while the remaining model areas are still processing the input.
+        
+        :return: The hold function.
+        :rtype: callable
+        """
+        return self._hold_function
+
+    def load_stimuli(self, stimuli: Deque[TimeFrame]) -> None:
+        """Loads the stimuli that will be streamed to the other model areas during the simulation.
+
+        :param stimuli: The :py:class:`.TimeFrame` objects to be be processed by the model. The time frames have to be ordered within the deque such that they will get extacted chronologically by the deque.pop method. The :py:meth:`~.TimeFrame.state` of each time frame is required to enumerate instances along the :py:attr:`.Area.BATCH_AXIS`. **IMPORTANT**: The duration of each time frame must be equal to the :py:meth:`~.Area.processing_time` of the source area, in seconds. 
+        :type stimuli: Deque[:py:class:`.TimeFrame`]
+        :raises ValueError: if the duration of any time frame is not equal to the :py:meth:`~.Area.processing_time` of the source area, in seconds.
         """
             
         # Check input validity
-        if not isinstance(X, torch.Tensor):
-            raise TypeError("The input X must be a torch.Tensor object.")
-        if not isinstance(duration, float):
-            raise TypeError("The duration must be a float.")
-        if not duration > 0:
-            raise ValueError("The duration must be greater than 0.")
-        if Area.TIME_AXIS >= len(X.shape):
-            raise ValueError(f"X does not have enough axes to have a time axis at index {Area.TIME_AXIS}.")
-        if not X.shape[Area.TIME_AXIS] >= duration * self._update_rate:
-            raise ValueError(f"The input X must have a shape of {X.shape[0]} x {int(duration / stimulus_step_size)} along the time axis {time_axis}.")
+        if not isinstance(stimuli, deque):
+            raise TypeError("The stimuli must be a list of TimeFrame objects.")
+        if len(stimuli) == 0:
+            raise ValueError("The stimuli must not be an empty list.")
+        for time_frame in stimuli:
+            if not isinstance(time_frame, TimeFrame):
+                raise TypeError("Each time frame must be a TimeFrame object.")
+            if not abs(time_frame.duration - self._processing_time) < 1e-10: # Accounting for small numerical errors
+                raise ValueError("The duration of each time frame must be equal to the processing time of the source area, in seconds.")
+    
+        # Set stimuli
+        self._stimuli = stimuli
+
+        # Reset the remaining cool down duration
+        self._remaining_cool_down_duration = self._cool_down_duration
+
+    @property
+    def stimuli(self) -> Deque[TimeFrame]:
+        """The stimuli that are currently loaded in the source area. This is a deque of :py:class:`.TimeFrame` objects that are to be processed by the model.
         
-        # Create a time frame generator
-        def time_frame_generator(self, X: torch.Tensor, duration: float, stimulus_step_size: float, time_axis: int) -> TimeFrame:
-            # Iterate over the time frames of X
-            i = 0; j = (int)(X.shape[time_axis] / stimulus_step_size)
-            index = 0
-            while j < X.shape[time_axis]:
-                # Create a time frame from the current time frame of X
-                time_frame = TimeFrame(state=X[:, i:j, :], index=index, start_time=i * stimulus_step_size, duration=stimulus_step_size)
-                yield time_frame
-                i = j; j += (int)(X.shape[time_axis] / stimulus_step_size)
-                index += 1
+        :return: The stimuli.
+        :rtype: Deque[:py:class:`.TimeFrame`]
+        """
+        return self._stimuli
 
-        self._time_frame_generator = time_frame_generator(self)
+    def forward(self) -> None:
 
+        # Get the next time frame
+        if len (self._stimuli) > 0:
+            time_frame =self._stimuli.pop()
+            self._last_time_frame = copy.deepcopy(time_frame)
+        elif self._remaining_cool_down_duration > 0:
+            # If there are no more time frames, hold the last state for the cool down duration
+            # Continue the stream
+            state = self._hold_function(copy.deepcopy(self._last_time_frame.state))
+            self._last_time_frame = TimeFrame(state=state, 
+                                              index=self._last_time_frame.index, 
+                                              start_time=self._last_time_frame.start_time + self._processing_time, 
+                                              duration=self._last_time_frame.duration)
+            self._remaining_cool_down_duration -= self._processing_time
+        else: # Simulation is over
+            return        
+        
+        # Pass the time frame to the output connections
+        for area_index, connection in self._output_connections.items():
+            connection.forward(time_frame=time_frame)
+
+        def reset(self) -> None:
+
+            # Call parent
+            super().reset()
+
+            # Reset remaining cool down duration
+            self._remaining_cool_down_duration = self._cool_down_duration
 
 class TimeAverageThenStateConcatenateThenTransformLinear(torch.nn.Module):
-    """An :py:class:`.Area` that first averages the time frames for each input buffer, then concatenates them together with the area's state along their last axis and finally applies a linear transformation.
+    """An :py:class:`.Area` that first averages the time frames for each input buffer, then concatenates them together with the area state along their last axis and finally applies a linear transformation.
     Note:
     
     * The state of the calling :py:class:`.Area` is assumed to be a mere torch.Tensor object, i.e. it is not a list of torch.Tensor objects.
-    * The input states of the other :py:class:`.Area`s are assumed to be torch.Tensor objects of shape [instance count, time frame count, dimensionality]. 
+    * The input states of the other :py:class:`.Area` s are assumed to be torch.Tensor objects of shape [instance count, time frame count, dimensionality]. 
 
     :param input_dimensionality: The dimensionality of the input. This is the sum of the dimensionalities of all inputs (inclduing the state of the calling area).
     :type input_dimensionality: int
@@ -508,7 +600,7 @@ class TimeAverageThenStateConcatenateThenTransformLinear(torch.nn.Module):
         return self.linear(concatenated)
 
 class BrIANN(torch.nn.Module):
-    """_summary_
+    """TODO: _summary_
 
     :param batch_size: The batch size used when passing instances through the areas.
     :type batch_size: int
@@ -528,6 +620,48 @@ class BrIANN(torch.nn.Module):
 
         # Set the target area index
         self._TARGET_AREA_INDEX = len(self._areas) - 1
+
+        # Set the time of the simulation
+        self._simulation_time = 0.0
+
+        # Set the flag to indicate that all states are reset
+        self._all_states_reset = False
+
+    @property
+    def areas(self) -> Dict[int, Area]:
+        """A dictionary where each key is an area index and each value is a :py:class:`.Area` object. This is used to access the areas of the model.
+        
+        :return: The areas of the model.
+        :rtype: Dict[int, :py:class:`.Area`]
+        """
+        return self._areas
+    
+    @property
+    def connection_from(self) -> Dict[int, List[Connection]]:
+        """A dictionary where each key is an area index and each value is a list of :py:class:`.Connection` objects that are the output connections of the area with the given index. This is used to access the output connections of the areas of the model.
+        
+        :return: The output connections of the areas of the model.
+        :rtype: Dict[int, List[:py:class:`.Connection`]]
+        """
+        return self._connection_from
+    
+    @property
+    def connection_to(self) -> Dict[int, List[Connection]]:
+        """A dictionary where each key is an area index and each value is a list of :py:class:`.Connection` objects that are the input connections of the area with the given index. This is used to access the input connections of the areas of the model.
+        
+        :return: The input connections of the areas of the model.
+        :rtype: Dict[int, List[:py:class:`.Connection`]]
+        """
+        return self._connection_to
+    
+    @property
+    def simulation_time(self) -> float:
+        """The current simulation time in seconds. This is the time that has passed since the start of the simulation. It is updated after each step of the simulation.
+        
+        :return: The current simulation time.
+        :rtype: float
+        """
+        return self._simulation_time
 
     @property
     def TARGET_AREA_INDEX(self) -> int:
@@ -566,6 +700,7 @@ class BrIANN(torch.nn.Module):
 
         # Set areas
         self._areas = {}
+        self._default_states = {}
         for item in configuration["areas"]:
             # Unpack configuration
             area_index = item["index"]
@@ -594,42 +729,65 @@ class BrIANN(torch.nn.Module):
                             transformation=transformation, 
                             update_rate=item["update_rate"])
                 self._areas[area_index] = area
+                self._default_states[area_index] = initial_state
 
-    def start(self, X: torch.Tensor, duration: float, stimulus_step_size: float) -> None:
-        """Starts the simulation with the given stimuli **X** as input. This involves splitting **X** along :py:attr:`.Area.TIME_AXES` into :py:class:`.TimeFrame` 
-        objects, each representing a section of the input. The length of this section is equal to 1 divided by the update rate of the source area (specified in 
-        the configuration file), in seconds. Note that multiple consecutive time frames of the original **X** can be grouped into the same :py:class:`.TimeFrame` object, 
-        depending on the number of original time frames in **X** and the update rate of the source. 
+        # Set flag to indicate that all states are reset
+        self._all_states_reset = True
 
-        :param X: The stimuli to be be processed by the model. It is assumed that instances of **X** are enumerated along :py:attr:`.Area.BATCH_AXIS` and the original time frames of **X** are enumerated along :py:attr:`.Area.TIME_AXIS`. All stimuli in the batch are assumed to have the same stimulus **duration**. **X** must have at least **duration** * source update rate many original time frames in order for the mapping to actual :py:class:`.TimeFrame` objects to work.
-        :type X: torch.Tensor
-        :param duration: A positive float indicating the duration of the stimuli in **X**, given in seconds.
-        :type duration: float
+    def start(self, stimuli: Deque[TimeFrame]) -> None:
+        """Starts the simulation of a trial with the given **stimuli** as input.
+
+        :param stimuli: The :py:class:`.TimeFrame` objects to be be processed by the model. The time frames have to be ordered within the deque such that they will get extacted chronologically by the deque.pop method. The :py:meth:`~.TimeFrame.state` of each time frame is required to enumerate instances along the :py:attr:`.Area.BATCH_AXIS`. **IMPORTANT**: The duration of each time frame must be equal to the :py:meth:`~.Area.processing_time` of the source area, in seconds. 
+        :type stimuli: Deque[:py:class:`.TimeFrame`]
+        :raises ValueError: if the duration of any time frame is not equal to the :py:meth:`~.Area.processing_time` of the source area, in seconds.
         """
         
+        # Reset the states of all areas
+        if not self._all_states_reset:
+            for area in self._areas.values():
+                area.reset()
+            self._all_states_reset = True
+
         # Provide X to the source area
-        self._areas[self.SOURCE_AREA_INDEX].load(X=X, duration=duration)
+        self._areas[self.SOURCE_AREA_INDEX].load_stimuli(stimuli=stimuli)
 
-        # Make the first step of the simulation
-
-    def step(self) -> torch.Tensor:
+    def step(self) -> TimeFrame:
         """Performs one step of the simulation by processing the next :py:class:`.TimeFrame` from the input stimuli and passing it through the areas.
-        This method needs to called repeatedly until all time frames have been processed.
+        This method needs to be called repeatedly until all time frames until the end of the simulation.
+
+        :raises Exception: if the simulation is over.
+        :return: The current time frame output by the target area, in case the target area was due in the current step. Otherwise, None is return
+        :rtype: :py:class:`.TimeFrame`
         """
         
-        # Iterate all areas and call the forward method for those that are due next
-        for area 
+        # If no more areas are due, stop the simulation
+        if self._areas[self.SOURCE_AREA_INDEX].remaining_cool_down_time <= 0:            
+            raise Exception("Cannot take another step because simulation is over.")
 
-        # Get the next time frame
-        try:
-            time_frame = next(self._time_frame_generator)
+        # Find the areas that are due next
+        next_areas = []
+        min_time = sys.float_info.max
+        for area in self._areas.values():
+            area_next_time = (area.produced_time_frame_count+1) * area.processing_time # Add 1 to get the time of the area's next frame 
+            if abs(area_next_time - min_time) < 1e-10: # Current area belongs to current set of next areas, accounting for small numerical timing errors
+                next_areas.append(area)
+            elif area_next_time < min_time - 1e-10: # Current area is due sooner 
+                next_areas = [area]
+                min_time = area_next_time
 
-            # Feed time_frame from source to all areas that have this time frame as input
-            for connection in self._connection_from["source"]:
-                connection.forward(time_frame=time_frame)
+        
+        # Propagate
+        for area in next_areas: area.forward()
 
-            # Take the time frames from all buffers of the target
-            for connection in self._connection_to["target"]:
-                connection.forward(time_frame=time_frame)
-        except StopIteration as exception:
-            raise exception
+        # Update the simulation time
+        self._simulation_time += min_time
+
+        # Extract latest time frame
+        target_area = self._areas[self.TARGET_AREA_INDEX]
+        if target_area in next_areas:
+            new_time_frame = TimeFrame(state=target_area.state, 
+                                       index=target_area.produced_time_frames_count-1, # Subtract 1, since the target area already incremeted its counter during the forward call
+                                       start_time=target_area.produced_time_frames_count * target_area.processing_time, 
+                                       duration=target_area.processing_time)
+        else:
+            return None

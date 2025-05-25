@@ -72,5 +72,6 @@
             "initial_state": "torch.zeros(10)",
             "update_rate": 1
         }
-    ]
+    ],
+    "cool_Down_duration": 0.1
 }
