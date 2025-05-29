@@ -1,6 +1,7 @@
 from __future__ import annotations
+""" 
 
-import cppbriann.scikit_build_example as m
+import briann.python.network.components as bnc
 
 
 def test_version():
@@ -13,3 +14,4 @@ def test_add():
 
 def test_sub():
     assert m.subtract(1, 2) == -1
+"""

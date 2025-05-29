@@ -2,43 +2,43 @@
     "connections":
     [
         {
-            "from_area_index": "source",
-            "to_area_index": 0,
+            "from_area_index": 0,
+            "to_area_index": 1,
             "transformation": "torch.nn.Identity()"
         },
         {
-            "from_area_index": "source",
-            "to_area_index": 1,
+            "from_area_index": 0,
+            "to_area_index": 2,
             "transformation": "torch.nn.Linear(2,1)"
         },
         {
-            "from_area_index": 0,
+            "from_area_index": 1,
+            "to_area_index": 2,
+            "transformation": "torch.nn.Linear(2, 1)"
+        },
+        {
+            "from_area_index": 2,
+            "to_area_index": 3,
+            "transformation": "torch.nn.Linear(3, 2)"
+        },
+        {
+            "from_area_index": 1,
+            "to_area_index": 3,
+            "transformation": "torch.nn.Linear(2, 2)"
+        },
+        {
+            "from_area_index": 3,
             "to_area_index": 1,
             "transformation": "torch.nn.Linear(2, 1)"
         },
         {
-            "from_area_index": 1,
-            "to_area_index": 2,
-            "transformation": "torch.nn.Linear(3, 2)"
-        },
-        {
-            "from_area_index": 0,
-            "to_area_index": 2,
-            "transformation": "torch.nn.Linear(2, 2)"
-        },
-        {
             "from_area_index": 2,
-            "to_area_index": 0,
-            "transformation": "torch.nn.Linear(2, 1)"
-        },
-        {
-            "from_area_index": 1,
-            "to_area_index": "target",
+            "to_area_index": 3,
             "transformation": "torch.nn.Linear(3, 10)"
         },
         {
-            "from_area_index": 2,
-            "to_area_index": "target",
+            "from_area_index": 3,
+            "to_area_index": 4,
             "transformation": "torch.nn.Linear(2, 10)"
         }
     ],
@@ -46,32 +46,34 @@
     "areas": 
     [
         {
-            "index": "source",
-            "update_rate": 10
-        },
-        {
             "index": 0,
-            "initial_state": "torch.zeros(2)",
-            "transformation": "TimeAverageThenStateConcatenateThenTransformLinear(input_dimensionality=5, output_dimensionality=2",
-            "update_rate": 10
+            "update_rate": 10.0,
+            "cool_down_duration": 0.1
         },
         {
             "index": 1,
-            "initial_state": "torch.zeros(3)",
-            "transformation": "TimeAverageThenStateConcatenateThenTransformLinear(input_dimensionality=5, output_dimensionality=3",
-            "update_rate": 5
+            "initial_state": "torch.zeros(2)",
+            "transformation": "BasicAreaTransformation(input_dimensionality=5, output_dimensionality=2)",
+            "update_rate": 10.0
         },
         {
             "index": 2,
-            "initial_state": "torch.zeros(2)",
-            "transformation": "TimeAverageThenStateConcatenateThenTransformLinear(input_dimensionality=6, output_dimensionality=2",
-            "update_rate": 2
+            "initial_state": "torch.zeros(3)",
+            "transformation": "BasicAreaTransformation(input_dimensionality=5, output_dimensionality=3)",
+            "update_rate": 5.0
         },
         {
-            "index": "target",
+            "index": 3,
+            "initial_state": "torch.zeros(2)",
+            "transformation": "BasicAreaTransformation(input_dimensionality=6, output_dimensionality=2)",
+            "update_rate": 2.0
+        },
+        {
+            "index": 4,
             "initial_state": "torch.zeros(10)",
-            "update_rate": 1
+            "transformation": "BasicAreaTransformation(input_dimensionality=10, output_dimensionality=10)",
+            "update_rate": 1.0
         }
-    ],
-    "cool_Down_duration": 0.1
+    ]
+    
 }

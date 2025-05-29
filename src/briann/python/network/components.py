@@ -8,6 +8,8 @@ from abc import ABC, abstractmethod
 from collections import deque
 import json
 import copy
+import networkx as nx
+import matplotlib.pyplot as plt
 
 class TimeFrame():
     """A time frame in the simulation that holds a temporary state of an :py:class:`.Area`. Note, this constructor automatically computes the :py:attr:`~.TimeFrame.end_time` based on the provided `start_time` and `duration`.
@@ -222,7 +224,7 @@ class Connection(torch.nn.Module):
         return self._to_area_index
     
     @property
-    def output_time_frame_bufer(self) -> TimeFrameBuffer:
+    def output_time_frame_buffer(self) -> TimeFrameBuffer:
         """:return: The time frame buffer that is the target of the connection.
         :rtype: :py:class:`.TimeFrameBuffer`
         """
@@ -233,7 +235,7 @@ class Connection(torch.nn.Module):
         """:return: The transformation that is applied to the input to obtain the output.
         :rtype: torch.nn.Module
         """
-        return self.__transformation
+        return self._transformation
     
     def forward(self, time_frame: TimeFrame) -> None:
         """Applies the :py:meth:`~.Connection.transformation` to the given **time_frame** and inserts it into the :py:meth:`~.Connection.output_time_frame_buffer` of self.
@@ -251,13 +253,17 @@ class Connection(torch.nn.Module):
         
         # Insert the new time frame into the output time_frame_buffer's buffer
         self._output_time_frame_buffer.insert(new_time_frame)
+    
+    def __repr__(self) -> str:
+        """Returns a string representation of the connection."""
+        return f"Connection(from_area_index={self._from_area_index}, to_area_index={self._to_area_index}, transformation={self._transformation.__class__.__name__})"
   
 class Area(torch.nn.Module):
     """A area corresponds to a small population of biological neurons that jointly hold one representation. It has a state that is updated by transforming and aggregating inputs from other areas.
     The area assumes that instances are enumerated along :py:attr:`~.Area.BATCH_AXIS` and that time frames are concatenated along :py:attr:`~.Area.TIME_AXIS`.    
     
     :param index: Sets the :py:attr:`~.Area.index` of this area.
-    :type index: int | str
+    :type index: int
     :param initial_state: Sets the :py:meth:`~.Area.state` of this area. 
     :type initial_state: torch.Tensor | List[torch.Tensor]
     :param input_time_frame_buffers: Sets the :py:meth:`~.Area.input_time_frame_buffers` of this area. 
@@ -276,7 +282,7 @@ class Area(torch.nn.Module):
     TIME_AXIS = 1
     """The time axis of this area. This is the axis along which the time frames are concatenated when being read from a :py:class:`.TimeFrameBuffer`."""
 
-    def __init__(self, index: int | str, initial_state: torch.Tensor | List[torch.Tensor], input_time_frame_buffers: Dict[int, TimeFrameBuffer], output_connections: Dict[int, Connection], transformation: torch.nn.Module, update_rate: float) -> "Area":
+    def __init__(self, index: int, initial_state: torch.Tensor | List[torch.Tensor], input_time_frame_buffers: Dict[int, TimeFrameBuffer], output_connections: Dict[int, Connection], transformation: torch.nn.Module, update_rate: float) -> "Area":
         
         # Call the parent constructor
         super().__init__()
@@ -300,14 +306,18 @@ class Area(torch.nn.Module):
 
         # Set input time_frame_buffers
         if not isinstance(input_time_frame_buffers, dict):
-            raise TypeError(f"The input_time_frame_buffers for area {index} must be a dictionary where each key is an area index and each value is a TimeFrameBuffer object.")
+            raise TypeError(f"The input_time_frame_buffers for area {index} must be a dictionary where each key is the index of an area from which the buffer receives input and each value is a TimeFrameBuffer object. ")
+        if not all(isinstance(area_index, int) for area_index in input_time_frame_buffers.keys()):
+            raise TypeError(f"All keys in the input_time_frame_buffers dictionary of area {index} must be integers.")
         if not all(isinstance(time_frame_buffer, TimeFrameBuffer) for time_frame_buffer in input_time_frame_buffers.values()):
             raise TypeError(f"All values in the input_time_frame_buffers dictionary of area {index} must be TimeFrameBuffer objects.")
         self._input_time_frame_buffers = input_time_frame_buffers
         
         # Output connections
         if not isinstance(output_connections, dict):
-            raise TypeError(f"Output connections for area {index} must be a dictionary where each key is an area index and each value is a Connection object.")
+            raise TypeError(f"Output connections for area {index} must be a dictionary where each key is the index of the area to which the connection projects and each value is a :py:class:`.Connection` object.")
+        if not all(isinstance(area_index, int) for area_index in output_connections.keys()):
+            raise TypeError(f"All keys in the output_connections dictionary of area {index} must be integers.")
         if not all(isinstance(connection, Connection) for connection in output_connections.values()):
             raise TypeError(f"All values in the output_connections dictionary of area {index} must be Connection objects.")
         self._output_connections = output_connections
@@ -325,7 +335,7 @@ class Area(torch.nn.Module):
         self._update_rate = update_rate
 
         # Set processing time
-        self._processing_time = 1/update_rate
+        self._processing_time = 1.0/update_rate
 
         # Set the number of produced time frames
         self._produced_time_frames_count = 0
@@ -347,14 +357,14 @@ class Area(torch.nn.Module):
 
     @property
     def input_time_frame_buffers(self) -> Dict[int, TimeFrameBuffer]:
-        """:return: A dictionary where each key is an area index and each value is a TimeFrameBuffer object. These input buffers accumulate incoming :py:class:`.TimeFrame` objects.
+        """:return: A dictionary where each key is the index of an area from which the buffer receives input and each value is a TimeFrameBuffer object. These input buffers accumulate incoming :py:class:`.TimeFrame` objects.
         :rtype: Dict[int, TimeFrameBuffer]
         """
         return self._input_time_frame_buffers
     
     @property
     def output_connections(self) -> Dict[int, Connection]:
-        """:return: A dictionary where each key is an area index and each value is a :py:class:`.Connection` object. These output connections are used to send the updated state of this area to the :py:class:`.TimeFrameBuffer` objects of other areas.
+        """:return: A dictionary where each key is the index of the area to which the connection projects and each value is a :py:class:`.Connection` object. These output connections are used to send the updated state of this area to the :py:class:`.TimeFrameBuffer` objects of other areas.
         :rtype: Dict[int, Connection]
         """
         return self._output_connections
@@ -426,10 +436,19 @@ class Area(torch.nn.Module):
         # Clear all input time frame buffers
         for time_frame_buffer in self._input_time_frame_buffers.values():
             time_frame_buffer.time_frame_buffer.clear()
+    
+    def __repr__(self) -> str:
+        """Returns a string representation of the area."""
+        return f"Area(index={self._index}, update_rate={self._update_rate}, produced_time_frame_count={self.produced_time_frames_count}, state shape(s)={self._state.shape if isinstance(self._state, torch.Tensor) else [s.shape for s in self._state]})"
 
 class Source(Area):
-    """TODO: _summary_
+    """The source :py:class:`.Area` is a special area because it streams the input to the other areas. In order to set it up for the simulation of a trial,
+    load stimuli via the :py:meth:`~.Source.load_stimuli method. Then, during each call to the :py:meth:`.~Area.forward` method, one :py:class:`.TimeFrame` 
+    will be taken from the stimuli and streamed to the other areas. Once the time frames are all streamed, the source area will use the **hold_function**
+    to hold the last time frame for a specified **cool_down_duration**, to let the other areas finish their processing.
 
+    :param index: Sets the :py:attr:`~.Area.index` of this area.
+    :type index: int
     :param output_connections: Sets the :py:meth:`~.Area.output_connections` of this area.
     :type output_connections: Dict[int, :py:class:`.Connection`]
     :param update_rate: Sets the :py:meth:`~.Area.update_rate` of this area.
@@ -440,10 +459,10 @@ class Source(Area):
     :type hold_function: callable, optional, default to lambda last_state: torch.zeros_like(last_state)
     """
 
-    def __init__(self, output_connections: Dict[int, Connection], update_rate: float, cool_down_duration: float, hold_function: callable = lambda last_state: torch.zeros_like(last_state)) -> "Source":
+    def __init__(self, index: int, output_connections: Dict[int, Connection], update_rate: float, cool_down_duration: float, hold_function: callable = lambda last_state: torch.zeros_like(last_state)) -> "Source":
 
         # Call the parent constructor
-        super().__init__(index="source",
+        super().__init__(index=index,
                          initial_state=torch.zeros(1, 1),  # Initial state is a dummy tensor
                          input_time_frame_buffers={},
                          output_connections=output_connections,
@@ -459,7 +478,7 @@ class Source(Area):
         self._remaining_cool_down_duration = cool_down_duration
 
         # Set the hold function
-        if not isinstance(hold_function, callable):
+        if not callable(hold_function):
             raise TypeError("The hold_function must be a callable that takes as input a tensor which is equal to the state of the last TimeFrame object generated from the input to the simulation.")
         self._hold_function = hold_function
 
@@ -557,7 +576,16 @@ class Source(Area):
             # Reset remaining cool down duration
             self._remaining_cool_down_duration = self._cool_down_duration
 
-class TimeAverageThenStateConcatenateThenTransformLinear(torch.nn.Module):
+class StateVisualizer():
+    """Superclass for a set of classes that create 2D visualizations of a :py:meth:`.TimeFrame.state` on a 1x1 unit square"""
+
+    def __init__(self):
+        pass
+
+    def visualize(self, axes, x, y):
+        pass
+
+class BasicAreaTransformation(torch.nn.Module):
     """An :py:class:`.Area` that first averages the time frames for each input buffer, then concatenates them together with the area state along their last axis and finally applies a linear transformation.
     Note:
     
@@ -570,13 +598,13 @@ class TimeAverageThenStateConcatenateThenTransformLinear(torch.nn.Module):
     :type output_dimensionality: int
     """
 
-    def __init__(self, input_dimensionality: int, output_dimensionality: int) -> "TimeAverageThenStateConcatenateThenTransformLinear":
+    def __init__(self, input_dimensionality: int, output_dimensionality: int) -> "BasicAreaTransformation":
         
         # Call the parent constructor
         super().__init__()
 
         # Set linear transformation
-        self.linear = nn.Linear(input_dimensionality, output_dimensionality)
+        self.linear = torch.nn.Linear(input_dimensionality, output_dimensionality)
 
     def forward(self, inputs: Tuple[torch.Tensor, List[torch.Tensor]]) -> torch.Tensor:
         """Applies the main calculation of this module to the given **inputs** and returns the result.
@@ -679,15 +707,34 @@ class BrIANN(torch.nn.Module):
         with open(configuration_file_path, "r") as file:
             configuration = json.load(file)
         
+        # Find target area index
+        self._TARGET_AREA_INDEX = max(item["index"] for item in configuration["areas"])
+        if not isinstance(self._TARGET_AREA_INDEX, int):
+            raise TypeError("The target area index must be an int.")
+        
+        # Chekc if all area indices are integers between the source and target area indices
+        area_indices = [item["index"] for item in configuration["areas"]]
+        if not all(isinstance(area_index, int) for area_index in area_indices):
+            raise TypeError("All area indices must be integers.")
+        if not all(area_index in range(self.SOURCE_AREA_INDEX, self._TARGET_AREA_INDEX + 1) for area_index in area_indices):
+            raise ValueError("All area indices must be integers between the source area index and the target area index, inclusive.")
+        
+        # Check validity of batch size
+        if not isinstance(batch_size, int):
+            raise TypeError("The batch size must be an int.")
+        if not batch_size > 0:
+            raise ValueError("The batch size must be greater than 0.")
+
         # Set connections
-        self._connection_from = {}
-        self._connection_to = {}
+        self._connection_from = {area_index: [] for area_index in area_indices}
+        self._connection_to = {area_index: [] for area_index in area_indices}
         for item in configuration["connections"]:
             # Extract configuration
             from_area_index = item["from_area_index"]
             to_area_index = item["to_area_index"]
             output_time_frame_buffer = TimeFrameBuffer()
-            transformation = exec(item["transformation"])
+            global transformation
+            exec("global transformation; transformation = " + item["transformation"])
             connection = Connection(from_area_index=from_area_index, to_area_index=to_area_index, output_time_frame_buffer=output_time_frame_buffer, transformation=transformation)
             
             # Insert the connection to the from array
@@ -702,34 +749,41 @@ class BrIANN(torch.nn.Module):
         self._areas = {}
         self._default_states = {}
         for item in configuration["areas"]:
-            # Unpack configuration
+            
+            # Enrich configuration
             area_index = item["index"]
-
-            if area_index == "source": self._areas["source"] = Source(output_connections=self._connection_from[area_index], update_rate=item["update_rate"])
+            
+            if "hold_function" in item.keys(): 
+                global hold_function
+                exec("global hold_function; hold_function = " + item["hold_function"])
+                item["hold_function"] = hold_function
+            
+            item["output_connections"] = {connection.to_area_index : connection for connection in self._connection_from[area_index]} 
+            if area_index == self.SOURCE_AREA_INDEX: self._areas[self.SOURCE_AREA_INDEX] = Source(**item)
             else:
                 # Prepare initial state
-                initial_state = exec(item["initial_state"]) # Can be a single tensor or a list of tensors
+                global initial_state
+                exec("global initial_state; initial_state = " + item["initial_state"]) # Can be a single tensor or a list of tensors
+                
                 if isinstance(initial_state, list):
                     for state in initial_state:
                         state = torch.concatenate([state[torch.newaxis, :] for _ in range(batch_size)], dim=0) # The batch axis is the first axis
                 elif isinstance(initial_state, torch.Tensor):
                     initial_state = torch.concatenate([initial_state[torch.newaxis, :] for _ in range(batch_size)], dim=0)
                 # No need for an else statement since exceptions will be raised by the area constructor if the initial state is not a tensor or a list of tensors.
+                item["initial_state"] = initial_state
 
                 # Prepare other parameters
-                input_time_frame_buffers = [connection.time_frame_buffer for connection in self._connection_to[area_index]]
-                output_connections = self._connection_from[area_index]
-                transformation = exec(item["transformation"]) if "transformation" in item.keys() else torch.nn.Identitiy()
+                item["input_time_frame_buffers"] = {connection.from_area_index : connection.output_time_frame_buffer for connection in self._connection_to[area_index]}
+                item["output_connections"] = {connection.to_area_index : connection for connection in self._connection_from[area_index]}
+                if "transformation" in item.keys():
+                    exec("global transformation; transformation = " + item["transformation"])
+                    item["transformation"] = transformation
 
                 # Create area
-                area = Area(index=area_index, 
-                            initial_state=initial_state, 
-                            input_time_frame_buffers=input_time_frame_buffers, 
-                            output_connections=output_connections, 
-                            transformation=transformation, 
-                            update_rate=item["update_rate"])
+                area = Area(**item)
                 self._areas[area_index] = area
-                self._default_states[area_index] = initial_state
+                self._default_states[area_index] = item["initial_state"]
 
         # Set flag to indicate that all states are reset
         self._all_states_reset = True
@@ -765,29 +819,81 @@ class BrIANN(torch.nn.Module):
             raise Exception("Cannot take another step because simulation is over.")
 
         # Find the areas that are due next
-        next_areas = []
+        self._next_areas = []
         min_time = sys.float_info.max
         for area in self._areas.values():
             area_next_time = (area.produced_time_frame_count+1) * area.processing_time # Add 1 to get the time of the area's next frame 
             if abs(area_next_time - min_time) < 1e-10: # Current area belongs to current set of next areas, accounting for small numerical timing errors
-                next_areas.append(area)
+                self._next_areas.append(area)
             elif area_next_time < min_time - 1e-10: # Current area is due sooner 
-                next_areas = [area]
+                self._next_areas = [area]
                 min_time = area_next_time
 
         
         # Propagate
-        for area in next_areas: area.forward()
+        for area in self._next_areas: area.forward()
 
         # Update the simulation time
         self._simulation_time += min_time
 
         # Extract latest time frame
         target_area = self._areas[self.TARGET_AREA_INDEX]
-        if target_area in next_areas:
+        if target_area in self._next_areas:
             new_time_frame = TimeFrame(state=target_area.state, 
                                        index=target_area.produced_time_frames_count-1, # Subtract 1, since the target area already incremeted its counter during the forward call
                                        start_time=target_area.produced_time_frames_count * target_area.processing_time, 
                                        duration=target_area.processing_time)
         else:
             return None
+        
+    def plot_graph(self, axes: plt.Axes = None) -> Dict[int, np.ndarray]:
+        """Plots the areas and connections of the model using a circular layout.
+
+        :param axes: In case the plot should be placed on a particular pair of axes, they can be provided here.
+        :type axes: matplotlib.pyplot.Axes, optional, defaults to None
+        :return area_positions: The positions of the areas on the 2D plane.
+        :rtype: Dict[int, numpy.ndarray]
+        """
+
+        # Create a directed graph
+        G = nx.DiGraph()
+
+        # Add nodes for each area
+        for area in self._areas.values():
+            G.add_node(area.index, label=area.index)
+
+        # Add edges for each connection
+        for from_area_index, connections in self._connection_from.items():
+            for connection in connections:
+                G.add_edge(from_area_index, connection.to_area_index)
+
+        # Draw the graph
+        if axes == None:
+                
+            plt.figure(figsize=(15,10))
+            axes = self.fig.add_subplot()
+            
+        # Graph
+        area_positions = nx.circular_layout(G)
+        nx.draw(G, area_positions, ax=axes, with_labels=True, labels=nx.get_node_attributes(G, 'label'), node_size=2000, node_color='lightblue', font_size=10, font_color='black', arrows=True)
+        
+        if hasattr(self, "_next_areas"):
+            options = {"edgecolors": "tab:gray", "node_size": 800, "alpha": 0.9}
+            nx.draw_networkx_nodes(G, area_positions, nodelist=[area.index for area in self._next_areas], node_color="tab:red", **options)
+
+        # Area data
+        for area_index, position in area_positions.items():
+            axes.text(x=1.2*position[0], y=1.2*position[1], s='Hello')
+
+        return area_positions
+        """
+        # Adjacency
+        plt.subplot(1,2,2)
+        adjacency_matrix = nx.to_numpy_array(G, nodelist=sorted(G.nodes()))
+        plt.imshow(adjacency_matrix, cmap='Blues', interpolation='nearest')
+        #plt.colorbar(label='Connection Strength')
+        plt.xlabel("To Area Index")
+        plt.ylabel("From Area Index")
+
+        plt.show()
+        """
