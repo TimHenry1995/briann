@@ -435,7 +435,7 @@ class Area(torch.nn.Module):
 
         # Clear all input time frame buffers
         for time_frame_buffer in self._input_time_frame_buffers.values():
-            time_frame_buffer.time_frame_buffer.clear()
+            time_frame_buffer.clear()
     
     def __repr__(self) -> str:
         """Returns a string representation of the area."""

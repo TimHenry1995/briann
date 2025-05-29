@@ -103,7 +103,7 @@ class App(customtkinter.CTk):
         """
         
     def select_configuration_file(self):
-        file_path = # filedialog.askopenfilename()
+        file_path = os.path.join("C:\\","Users","P70057764","Documents","PhD","Software Development","briann","tests","briann 1.json")# filedialog.askopenfilename()
         if file_path != "":
             try:
                 self._briann = bnc.BrIANN(batch_size=1, configuration_file_path=file_path)
