@@ -85,7 +85,7 @@ class App(customtkinter.CTk):
         self.reset_button = customtkinter.CTkButton(self.bottom_frame, state=tk.DISABLED,  text="Reset", command=self.on_reset_button_click)
         self.reset_button.grid(row=0, column=3, padx=20, pady=10) #.grid(row=1, column=0, padx=20, pady=10)
 
-        self.logo_label_2 = customtkinter.CTkLabel(self.bottom_frame, text="CustomTkinter", font=customtkinter.CTkFont(size=20, weight="bold"))
+        self.logo_label_2 = customtkinter.CTkLabel(self.bottom_frame, text=" ", font=customtkinter.CTkFont(size=20, weight="bold"))
         self.logo_label_2.grid(row=0, column=4)
 
         self.bottom_frame.grid_columnconfigure((0,4), weight=1)
@@ -105,18 +105,18 @@ class App(customtkinter.CTk):
     def select_configuration_file(self):
         file_path = os.path.join("C:\\","Users","P70057764","Documents","PhD","Software Development","briann","tests","briann 1.json")# filedialog.askopenfilename()
         if file_path != "":
-            try:
-                self._briann = bnc.BrIANN(batch_size=1, configuration_file_path=file_path)
-                self.plot.plot_graph()
-                self.enable_play_control_panel()
-            except:
-                tk.messagebox.showinfo("showinfo", f"The file at {file_path} is not a valid configuraiton file for a BrIANN model.") 
+            #try:
+            self._briann = bnc.BrIANN(batch_size=5, configuration_file_path=file_path)
+            self.plot.plot_graph()
+            self.enable_play_control_panel()
+            #except:
+            #    tk.messagebox.showinfo("showinfo", f"The file at {file_path} is not a valid configuraiton file for a BrIANN model.") 
         
     def select_data_directory(self):
         folder_path = os.path.join("C:\\","Users","P70057764","Downloads","sequences")#filedialog.askdirectory()
         if folder_path != "":
             try:
-                mnist = btd.MNIST_Sequence(batch_size=1, folder_path=folder_path, from_train=True, seed=42)
+                mnist = btd.MNIST_Sequence(batch_size=5, folder_path=folder_path, from_train=True, seed=42)
                 batch_generator = mnist.batch_generator()
                 self._time_frames, y = next(batch_generator)
                 self.enable_play_control_panel()
@@ -138,6 +138,7 @@ class App(customtkinter.CTk):
 
     def on_start_button_click(self):
         self._briann.start(stimuli=self._time_frames)
+        k=7
 
     def on_step_button_click(self):
         self._briann.step()

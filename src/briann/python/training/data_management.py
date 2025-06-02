@@ -5,6 +5,7 @@ sys.path.append(os.path.abspath(""))
 from src.briann.python.network import components as bnc
 import random
 import torch
+from collections import deque
 class MNIST_Sequence():
 
     TRAIN_COUNT = 60000
@@ -70,9 +71,9 @@ class MNIST_Sequence():
             X = torch.concat(X, dim=0) # Shape == [batch size, max sequence length, 3]
 
             # Convert X to TimeFrame objects
-            time_frames = [None] * max_sequence_length
+            time_frames = deque([])
             for t in range(max_sequence_length):
-                time_frames[t] = bnc.TimeFrame(state=X[:,t,:], index=t, start_time=(float)(t), duration=1.0)
+                time_frames.appendleft(bnc.TimeFrame(state=X[:,t,:], index=t, start_time=(float)(t), duration=1.0))
 
             yield time_frames, Y
 

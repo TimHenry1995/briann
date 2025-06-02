@@ -7,7 +7,7 @@ Specify a list of connection data entries using the key "connections"
 
 ## Area
 Specify a list of area data entries using the key "areas". There should be a single source area, a single target area and an arbitrary number of regular areas.
-- The source area is a special area with the parameters
+- The source area is a special area with the below parameters. It does not support for incoming connections and it does not support any transformation of the data inside of it.
     - "index": The index of the area. This has to be set to 0.
     - "update_rate": A float indicating the rate at which the area shall process its inputs, given in Hz.
     - "cool_down_duration": A float indicating how many seconds the source area shall hold the last actual time-frame to let the other areas finish processing.

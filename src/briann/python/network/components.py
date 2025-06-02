@@ -24,18 +24,22 @@ class TimeFrame():
     :type duration: float
     """
     
-    def __init__(self, state: torch.Tensor, index: int, start_time: float, duration: float) -> "TimeFrame":
+    def __init__(self, state: torch.Tensor | List[torch.Tensor], index: int, start_time: float, duration: float) -> "TimeFrame":
         
         # Set state
-        if not isinstance(state, torch.Tensor):
-            raise TypeError("The state must be a torch.Tensor.")
+        if isinstance(state, list):
+            if len(state) == 0:
+                raise ValueError(f"The state must not be an empty list.")
+            for i in range(len(state)):
+                if not isinstance(state[i], torch.Tensor):
+                    raise TypeError(f"If the state is a list, it must be a list of torch.Tensor objects.")
+        elif not isinstance(state, torch.Tensor):
+            raise TypeError(f"State must be a torch.Tensor.")
         self._state = state
         
         # Set index
         if not isinstance(index, int):
             raise TypeError("The index must be an int.")
-        if not index >= 0:
-            raise ValueError("The index must be greater than or equal to 0.")
         self._index = index
 
         # Set times
@@ -53,27 +57,32 @@ class TimeFrame():
 
     @property
     def state(self) -> torch.Tensor:
-        """The state of the time frame. This is a :py:class:`torch.tensor` without an explicit time axis, for instance of shape [instance count, dimensionality]."""
+        """:return: The state of the time frame. This is a :py:class:`torch.tensor` without an explicit time axis, for instance of shape [instance count, dimensionality].
+        :rtype: torch.Tensor"""
         return self._state
 
     @property
     def index(self) -> int:
-        """The index of the time frame. This is used to identify a timeframe."""
+        """:return: The index of the time frame. This is used to identify a timeframe.
+        :rtype: int"""
         return self._index
     
     @property
     def start_time(self) -> float:
-        """The start time of the time frame."""
+        """:return: The start time of the time frame.
+        :rtype: float"""
         return self._start_time
     
     @property
     def duration(self) -> float:
-        """The duration of the time frame."""
+        """:return: The duration of the time frame.
+        :rtype: float"""
         return self._duration
 
     @property
     def end_time(self) -> float:
-        """The end time of the time frame."""
+        """:return: The end time of the time frame.
+        :rtype: float"""
         return self._end_time   
     
 class TimeFrameBuffer():
@@ -143,9 +152,9 @@ class TimeFrameBuffer():
         # Append new time frame to the buffer
         if not isinstance(time_frame, TimeFrame):
             raise TypeError("The time frame must be a TimeFrame object.")
-        if not abs(time_frame.start_time - self.end_time) <= TimeFrameBuffer.ERROR_MARGIN:
+        if len(self._deque) > 0 and not abs(time_frame.start_time - self.end_time) <= TimeFrameBuffer.ERROR_MARGIN:
             raise ValueError("The start time of the to be inserted time frame must be equal to the current end time of the buffer, up to the accepted error margin.")
-        self._deque.insert_at_head(data=time_frame)
+        self._deque.append(time_frame)
 
     def pop(self) -> TimeFrame:
         """Removes the :py:class:`.TimeFrame` at the latest end of the buffer and returns it.
@@ -159,8 +168,11 @@ class TimeFrameBuffer():
         else:
             return self._deque.pop()
     
-    def clear(self) -> List[TimeFrame]:
+    def clear(self, keep_latest: bool = True) -> List[TimeFrame]:
         """Removes all :py:class:`.TimeFrame` objects from the buffer and returns them.
+
+        :param keep_latest: A flag indicating whether the most recent time frame should be kept in the buffer.
+        :type keep_latest: bool, optional, defaults to True
         :return: A list of all :py:class:`.TimeFrame` objects that were in the buffer.
         :rtype: List[:py:class:`.TimeFrame`]
         """
@@ -169,22 +181,23 @@ class TimeFrameBuffer():
         else:
             tmp = list(self._deque)
             self._deque.clear()
+            if keep_latest: self._deque.append(tmp[0])
             return tmp
             
 class Connection(torch.nn.Module):
     """A connection between an :py:class:`Area` and a :py:class:`.TimeFrameBuffer`. This is analogous to a neural tract between areas of a biological neural network that not only sends information but also converts it between the reference frames of the input and output area.
-
+    
     :param from_area_index: Sets the :py:meth:`~Connection.from_area_index` of this connection. 
     :type from_area_index: int
     :param to_area_index: Sets the :py:meth:`~Connection.to_area_index` of this connection. 
     :type to_area_index: int
-    :param output_time_frame_buffer: Sets the :py:meth:`~Connection.output_time_frame_buffer` of this connection.
-    :type output_time_frame_buffer: :py:class:`.TimeFrameBuffer`
+    :param intial_time_frame: Sets the :py:meth:`~Connection.initial_time_frame` of this connection.
+    :type initial_time_frame: :py:class:`.TimeFrame`
     :param transformation: Sets the :py:meth:`~.Connection.transformation` of the connection.
     :type transformation: torch.nn.Module, optional, defaults to :py:class:`torch.nn.Identity`
     """
 
-    def __init__(self, from_area_index: int, to_area_index: int, output_time_frame_buffer: TimeFrameBuffer, transformation: torch.nn.Module = torch.nn.Identity()) -> "Connection":
+    def __init__(self, from_area_index: int, to_area_index: int, initial_time_frame: TimeFrame, transformation: torch.nn.Module = torch.nn.Identity()) -> "Connection":
         
         # Call the parent constructor
         super().__init__()
@@ -200,14 +213,21 @@ class Connection(torch.nn.Module):
         self._to_area_index = to_area_index
 
         # Set output time frame buffer
-        if not isinstance(output_time_frame_buffer, TimeFrameBuffer):
-            raise TypeError("The output_time_frame_buffer must be a TimeFrameBuffer object.")
-        self._output_time_frame_buffer = output_time_frame_buffer
+        self._output_time_frame_buffer = TimeFrameBuffer()
         
+        # Set the initial time frame
+        if not isinstance(initial_time_frame, TimeFrame):
+            raise TypeError("The initial_time_frame must be a TimeFrame object.")
+        self._initial_time_frame = initial_time_frame
+
         # Set transformation
         if not isinstance(transformation, torch.nn.Module):
             raise TypeError("Transformation must be a torch.nn.Module object.")
         self._transformation = transformation
+
+        # Propagate the initial time frame through the transformation
+        time_frame = TimeFrame(state=self.transformation(initial_time_frame.state), index=initial_time_frame.index, start_time=initial_time_frame.start_time, duration=initial_time_frame.duration)
+        self._output_time_frame_buffer.insert(time_frame=time_frame)
 
     @property
     def from_area_index(self) -> int:
@@ -231,12 +251,19 @@ class Connection(torch.nn.Module):
         return self._output_time_frame_buffer
 
     @property
+    def initial_time_frame(self) -> TimeFrame:
+        """:return: The time frame passed through :py:meth:`.~Connection.transformation` and then saved into the :py:meth:`~.Connection.time_frame_buffer` of self during initialization and :py:meth:`~.Connection.reset`.
+        :rtype: :py:class:`.TimeFrame`
+        """
+        return self._initial_time_frame
+    
+    @property
     def transformation(self) -> torch.nn.Module:
         """:return: The transformation that is applied to the input to obtain the output.
         :rtype: torch.nn.Module
         """
         return self._transformation
-    
+        
     def forward(self, time_frame: TimeFrame) -> None:
         """Applies the :py:meth:`~.Connection.transformation` to the given **time_frame** and inserts it into the :py:meth:`~.Connection.output_time_frame_buffer` of self.
         """
@@ -252,8 +279,20 @@ class Connection(torch.nn.Module):
         new_time_frame = TimeFrame(state=transformed_time_frame, index=time_frame.index, start_time=time_frame.start_time, duration=time_frame.duration)
         
         # Insert the new time frame into the output time_frame_buffer's buffer
-        self._output_time_frame_buffer.insert(new_time_frame)
+        self._output_time_frame_buffer.insert(time_frame=new_time_frame)
+
+        print(f"Sent state of shape {new_time_frame.state.shape} from area {self.from_area_index} to {self.to_area_index}.")
     
+    def reset(self) -> None:
+        """Resets the :py:meth:`~.Connection.output_time_frame_buffer` of this connection such that it only contains the transformed :py:meth:`.Connection.initial_time_frame`. This method should be called every time a new trial is simulated."""
+
+        # Clear the output time frame buffer
+        self.output_time_frame_buffer.clear(keep_latest=False)
+        
+        # Propagate the initial time frame through the transformation
+        time_frame = TimeFrame(state=self.transformation(self.initial_time_frame.state), index=-1, start_time=-1.0)
+        self._output_time_frame_buffer.insert(time_frame=time_frame)
+
     def __repr__(self) -> str:
         """Returns a string representation of the connection."""
         return f"Connection(from_area_index={self._from_area_index}, to_area_index={self._to_area_index}, transformation={self._transformation.__class__.__name__})"
@@ -298,11 +337,11 @@ class Area(torch.nn.Module):
                 raise ValueError(f"The initial state of area {index} must not be an empty list.")
             for i in range(len(initial_state)):
                 if not isinstance(initial_state[i], torch.Tensor):
-                    raise TypeError(f"If the initial state of area {index} is a list, it must be a list of :py:class:`~torch.Tensor` objects.")
+                    raise TypeError(f"If the initial state of area {index} is a list, it must be a list of torch.Tensor objects.")
         elif not isinstance(initial_state, torch.Tensor):
-            raise TypeError(f"Initial state of area {index} must be a :py:class:`~torch.Tensor`.")
+            raise TypeError(f"Initial state of area {index} must be a torch.Tensor.")
         self._state = initial_state
-        self._initial_state = copy.deepcopy(initial_state)
+        self._initial_state = initial_state
 
         # Set input time_frame_buffers
         if not isinstance(input_time_frame_buffers, dict):
@@ -338,10 +377,7 @@ class Area(torch.nn.Module):
         self._processing_time = 1.0/update_rate
 
         # Set the number of produced time frames
-        self._produced_time_frames_count = 0
-
-        # Set the last time frame dictionary which holds time frames from the buffers until the buffers are replenished
-        self._last_time_frames = {}
+        self._produced_time_frame_count = 0
         
     @property
     def index(self) -> int:
@@ -388,13 +424,13 @@ class Area(torch.nn.Module):
         return self._processing_time
 
     @property
-    def produced_time_frames_count(self) -> int:
+    def produced_time_frame_count(self) -> int:
         """The number of time frames that have been produced by this area in the current trial. This is used to index the time frames that are produced by this area.
         
         :return: The number of produced time frames.
         :rtype: int
         """
-        return self._produced_time_frames_count
+        return self._produced_time_frame_count
 
     def forward(self) -> None:
         """Processes the time frames from the :py:meth:`~.Area.input_time_frame_buffers` using :py:meth:`~.Area.transformation` of self and passes the result to the :py:meth:`~.Area.output_connections`.
@@ -404,42 +440,36 @@ class Area(torch.nn.Module):
         # Iterate all input time_frame_buffers and clear them
         states = {}
         for area_index, time_frame_buffer in self._input_time_frame_buffers.items():
+            print(f"Area {self.index} has {time_frame_buffer.time_frame_count} time frames from area {area_index} in buffer.")
             
             # Get all time frames from the current input_time_frame_buffer
-            time_frames = time_frame_buffer.time_frame_buffer.clear()
-            if len(time_frames) > 0:
-                self.last_time_frames[area_index] = time_frames[-1] # Save the last time frame in case it needs to be put on hold
-                states[area_index] = torch.concat([time_frame.state.unsqueeze(Area.TIME_AXIS) for time_frame in time_frames], dim=Area.TIME_AXIS)
-            else: # The buffer for this area is empty, hence hold the most recent time frame's state
-                states[area_index] = copy.deepcopy(self._last_time_frames[area_index.state])
-
+            time_frames = time_frame_buffer.clear(keep_latest=True)
+            if len(time_frames) > 1: time_frames = time_frames[1:] # Trim off the oldest time frame since it has been processed already in the previous iteration. Note, if it is the only time-frame, it shall be processed again to smooth out the processing of the overall network
+            states[area_index] = torch.concat([time_frame.state.unsqueeze(Area.TIME_AXIS) for time_frame in time_frames], dim=Area.TIME_AXIS)
+            
         # Apply transformation to the states
         self._state = self._transformation.forward([self._state, states])
 
         # Create a new time frame for the current state
-        new_time_frame = TimeFrame(state=self._state, index=self._produced_time_frames_count, start_time=self._produced_time_frames_count*self._processing_time, duration=self._processing_time)
-        self._produced_time_frames_count += 1
+        new_time_frame = TimeFrame(state=self._state, index=self._produced_time_frame_count, start_time=self._produced_time_frame_count*self._processing_time, duration=self._processing_time)
+        self._produced_time_frame_count += 1
 
         # Pass the transformed states to the output connections
         for area_index, connection in self._output_connections.items():
             connection.forward(time_frame=new_time_frame)
 
     def reset(self) -> None:
-        """Resets the :py:meth:`~.Area.state`, :py:meth:`~.Area.input_time_frame_buffers` and :py:meth:`~.Area.produced_time_frames_count` of this area to their initial values. This should be done before simulating a new trial."""
+        """Resets the :py:meth:`~.Area.state` and :py:meth:`~.Area.produced_time_frame_count` of this area to their initial values. This should be done before simulating a new trial."""
         
         # Reset the state
-        self._state = copy.deepcopy(self._initial_state)
+        self._state = self._initial_state
         
-        # Reset the produced time frames
-        self._produced_time_frames_count = 0
-
-        # Clear all input time frame buffers
-        for time_frame_buffer in self._input_time_frame_buffers.values():
-            time_frame_buffer.clear()
+        # Reset the produced time frame count
+        self._produced_time_frame_count = 0
     
     def __repr__(self) -> str:
         """Returns a string representation of the area."""
-        return f"Area(index={self._index}, update_rate={self._update_rate}, produced_time_frame_count={self.produced_time_frames_count}, state shape(s)={self._state.shape if isinstance(self._state, torch.Tensor) else [s.shape for s in self._state]})"
+        return f"Area(index={self._index}, update_rate={self._update_rate}, produced_time_frame_count={self.produced_time_frame_count}, state shape(s)={self._state.shape if isinstance(self._state, torch.Tensor) else [s.shape for s in self._state]})"
 
 class Source(Area):
     """The source :py:class:`.Area` is a special area because it streams the input to the other areas. In order to set it up for the simulation of a trial,
@@ -449,6 +479,8 @@ class Source(Area):
 
     :param index: Sets the :py:attr:`~.Area.index` of this area.
     :type index: int
+    :param initial_state: Sets the :py:meth:`~.Area.state` of this area. 
+    :type initial_state: torch.Tensor | List[torch.Tensor]
     :param output_connections: Sets the :py:meth:`~.Area.output_connections` of this area.
     :type output_connections: Dict[int, :py:class:`.Connection`]
     :param update_rate: Sets the :py:meth:`~.Area.update_rate` of this area.
@@ -459,11 +491,11 @@ class Source(Area):
     :type hold_function: callable, optional, default to lambda last_state: torch.zeros_like(last_state)
     """
 
-    def __init__(self, index: int, output_connections: Dict[int, Connection], update_rate: float, cool_down_duration: float, hold_function: callable = lambda last_state: torch.zeros_like(last_state)) -> "Source":
+    def __init__(self, index: int, initial_state: torch.Tensor, output_connections: Dict[int, Connection], update_rate: float, cool_down_duration: float, hold_function: callable = lambda last_state: torch.zeros_like(last_state)) -> "Source":
 
         # Call the parent constructor
         super().__init__(index=index,
-                         initial_state=torch.zeros(1, 1),  # Initial state is a dummy tensor
+                         initial_state=initial_state,
                          input_time_frame_buffers={},
                          output_connections=output_connections,
                          transformation=torch.nn.Identity(),
@@ -522,9 +554,9 @@ class Source(Area):
             
         # Check input validity
         if not isinstance(stimuli, deque):
-            raise TypeError("The stimuli must be a list of TimeFrame objects.")
+            raise TypeError("The stimuli must be a deque of TimeFrame objects.")
         if len(stimuli) == 0:
-            raise ValueError("The stimuli must not be an empty list.")
+            raise ValueError("The stimuli must not be an empty deque.")
         for time_frame in stimuli:
             if not isinstance(time_frame, TimeFrame):
                 raise TypeError("Each time frame must be a TimeFrame object.")
@@ -551,11 +583,11 @@ class Source(Area):
         # Get the next time frame
         if len (self._stimuli) > 0:
             time_frame =self._stimuli.pop()
-            self._last_time_frame = copy.deepcopy(time_frame)
+            self._last_time_frame = time_frame
         elif self._remaining_cool_down_duration > 0:
             # If there are no more time frames, hold the last state for the cool down duration
             # Continue the stream
-            state = self._hold_function(copy.deepcopy(self._last_time_frame.state))
+            state = self._hold_function(self._last_time_frame.state)
             self._last_time_frame = TimeFrame(state=state, 
                                               index=self._last_time_frame.index, 
                                               start_time=self._last_time_frame.start_time + self._processing_time, 
@@ -568,13 +600,13 @@ class Source(Area):
         for area_index, connection in self._output_connections.items():
             connection.forward(time_frame=time_frame)
 
-        def reset(self) -> None:
+    def reset(self) -> None:
 
-            # Call parent
-            super().reset()
+        # Call parent
+        super().reset()
 
-            # Reset remaining cool down duration
-            self._remaining_cool_down_duration = self._cool_down_duration
+        # Reset remaining cool down duration
+        self._remaining_cool_down_duration = self._cool_down_duration
 
 class StateVisualizer():
     """Superclass for a set of classes that create 2D visualizations of a :py:meth:`.TimeFrame.state` on a 1x1 unit square"""
@@ -712,7 +744,7 @@ class BrIANN(torch.nn.Module):
         if not isinstance(self._TARGET_AREA_INDEX, int):
             raise TypeError("The target area index must be an int.")
         
-        # Chekc if all area indices are integers between the source and target area indices
+        # Check if all area indices are integers between the source and target area indices
         area_indices = [item["index"] for item in configuration["areas"]]
         if not all(isinstance(area_index, int) for area_index in area_indices):
             raise TypeError("All area indices must be integers.")
@@ -725,6 +757,24 @@ class BrIANN(torch.nn.Module):
         if not batch_size > 0:
             raise ValueError("The batch size must be greater than 0.")
 
+        # Extract initial states from areas to pass to connections
+        initial_states = {}
+        for item in configuration["areas"]:
+            
+            # Prepare initial state
+            global initial_state
+            exec("global initial_state; initial_state = " + item["initial_state"]) # Can be a single tensor or a list of tensors
+            
+            if isinstance(initial_state, list):
+                for state in initial_state:
+                    state = torch.concatenate([state[torch.newaxis, :] for _ in range(batch_size)], dim=0) # The batch axis is the first axis
+            elif isinstance(initial_state, torch.Tensor):
+                initial_state = torch.concatenate([initial_state[torch.newaxis, :] for _ in range(batch_size)], dim=0)
+            # No need for an else statement since exceptions will be raised by the area constructor if the initial state is not a tensor or a list of tensors.
+                        
+            # Store
+            initial_states[item["index"]] = initial_state
+
         # Set connections
         self._connection_from = {area_index: [] for area_index in area_indices}
         self._connection_to = {area_index: [] for area_index in area_indices}
@@ -732,10 +782,10 @@ class BrIANN(torch.nn.Module):
             # Extract configuration
             from_area_index = item["from_area_index"]
             to_area_index = item["to_area_index"]
-            output_time_frame_buffer = TimeFrameBuffer()
             global transformation
             exec("global transformation; transformation = " + item["transformation"])
-            connection = Connection(from_area_index=from_area_index, to_area_index=to_area_index, output_time_frame_buffer=output_time_frame_buffer, transformation=transformation)
+            initial_time_frame = TimeFrame(state=initial_states[from_area_index], index=-1, start_time=-1.0, duration=1.0)
+            connection = Connection(from_area_index=from_area_index, to_area_index=to_area_index, initial_time_frame=initial_time_frame, transformation=transformation)
             
             # Insert the connection to the from array
             if from_area_index not in self._connection_from: self._connection_from[from_area_index] = []
@@ -747,7 +797,6 @@ class BrIANN(torch.nn.Module):
 
         # Set areas
         self._areas = {}
-        self._default_states = {}
         for item in configuration["areas"]:
             
             # Enrich configuration
@@ -759,31 +808,25 @@ class BrIANN(torch.nn.Module):
                 item["hold_function"] = hold_function
             
             item["output_connections"] = {connection.to_area_index : connection for connection in self._connection_from[area_index]} 
-            if area_index == self.SOURCE_AREA_INDEX: self._areas[self.SOURCE_AREA_INDEX] = Source(**item)
+            
+            # Prepare initial state and output connections
+            item["initial_state"] = initial_states[item["index"]]
+            item["output_connections"] = {connection.to_area_index : connection for connection in self._connection_from[area_index]}
+            
+            # Create source
+            if area_index == self.SOURCE_AREA_INDEX: 
+                self._areas[self.SOURCE_AREA_INDEX] = Source(**item)
+            # Create other areas
             else:
-                # Prepare initial state
-                global initial_state
-                exec("global initial_state; initial_state = " + item["initial_state"]) # Can be a single tensor or a list of tensors
                 
-                if isinstance(initial_state, list):
-                    for state in initial_state:
-                        state = torch.concatenate([state[torch.newaxis, :] for _ in range(batch_size)], dim=0) # The batch axis is the first axis
-                elif isinstance(initial_state, torch.Tensor):
-                    initial_state = torch.concatenate([initial_state[torch.newaxis, :] for _ in range(batch_size)], dim=0)
-                # No need for an else statement since exceptions will be raised by the area constructor if the initial state is not a tensor or a list of tensors.
-                item["initial_state"] = initial_state
-
                 # Prepare other parameters
                 item["input_time_frame_buffers"] = {connection.from_area_index : connection.output_time_frame_buffer for connection in self._connection_to[area_index]}
-                item["output_connections"] = {connection.to_area_index : connection for connection in self._connection_from[area_index]}
                 if "transformation" in item.keys():
                     exec("global transformation; transformation = " + item["transformation"])
                     item["transformation"] = transformation
-
+                
                 # Create area
-                area = Area(**item)
-                self._areas[area_index] = area
-                self._default_states[area_index] = item["initial_state"]
+                self._areas[area_index] = Area(**item)
 
         # Set flag to indicate that all states are reset
         self._all_states_reset = True
@@ -802,7 +845,7 @@ class BrIANN(torch.nn.Module):
                 area.reset()
             self._all_states_reset = True
 
-        # Provide X to the source area
+        # Provide stimuli to the source area
         self._areas[self.SOURCE_AREA_INDEX].load_stimuli(stimuli=stimuli)
 
     def step(self) -> TimeFrame:
@@ -815,7 +858,7 @@ class BrIANN(torch.nn.Module):
         """
         
         # If no more areas are due, stop the simulation
-        if self._areas[self.SOURCE_AREA_INDEX].remaining_cool_down_time <= 0:            
+        if self._areas[self.SOURCE_AREA_INDEX].remaining_cool_down_duration <= 0:            
             raise Exception("Cannot take another step because simulation is over.")
 
         # Find the areas that are due next
@@ -840,8 +883,8 @@ class BrIANN(torch.nn.Module):
         target_area = self._areas[self.TARGET_AREA_INDEX]
         if target_area in self._next_areas:
             new_time_frame = TimeFrame(state=target_area.state, 
-                                       index=target_area.produced_time_frames_count-1, # Subtract 1, since the target area already incremeted its counter during the forward call
-                                       start_time=target_area.produced_time_frames_count * target_area.processing_time, 
+                                       index=target_area.produced_time_frame_count-1, # Subtract 1, since the target area already incremeted its counter during the forward call
+                                       start_time=target_area.produced_time_frame_count * target_area.processing_time, 
                                        duration=target_area.processing_time)
         else:
             return None
