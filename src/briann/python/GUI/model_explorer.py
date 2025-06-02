@@ -73,7 +73,7 @@ class App(customtkinter.CTk):
         self.plot = Plot(master=self.content_frame, data_object=self)
 
         # Place widgets in bottom frame. The frame uses its own grid layout internally.
-        self.time_stamp_label = customtkinter.CTkLabel(self.bottom_frame, text=f"Time: 0", font=customtkinter.CTkFont(size=20, weight="normal"))
+        self.time_stamp_label = customtkinter.CTkLabel(self.bottom_frame, text=f"Time: 0.000s", font=customtkinter.CTkFont(size=20, weight="normal"))
         self.time_stamp_label.grid(row=0, column=0, padx=20, pady=10)
 
         self.start_button = customtkinter.CTkButton(self.bottom_frame, state=tk.DISABLED,  text="Start", command=self.on_start_button_click)
@@ -138,17 +138,21 @@ class App(customtkinter.CTk):
 
     def on_start_button_click(self):
         self._briann.start(stimuli=self._time_frames)
-        k=7
+        print(self._briann)
 
     def on_step_button_click(self):
-        self._briann.step()
+        # Update briann
+        new_time_frame = self._briann.step()
+
+        # Update gui
+        self.time_stamp_label.configure(text=f"Time: {self._briann.simulation_time:.3f} s")
+        self.plot.plot_graph()
+
+        print(self._briann)
 
     def on_reset_button_click(self):
         print("Reset button click")
-
-    def on_next_time_frame_button_click(self):
-        self.time_stamp_label.setvar(name="text", value=self.briann.simulation_time)
-
+    
 class Plot():
     
     
@@ -158,20 +162,32 @@ class Plot():
         self.fig = Figure(figsize = (App.INITIAL_PLOT_WIDTH, App.INITIAL_HEIGHT)) 
         self.axes = self.fig.add_subplot()
         self.axes.set_axis_off()
-        # creating the Tkinter canvas containing the Matplotlib figure 
+        # Create the Tkinter canvas containing the Matplotlib figure 
         self.canvas = FigureCanvasTkAgg(self.fig, master = master) 
         self.canvas.draw() 
         self.canvas.get_tk_widget().pack(expand=True, fill='both') 
     
-        # creating the Matplotlib toolbar 
+        # Create the Matplotlib toolbar 
         toolbar = NavigationToolbar2Tk(self.canvas, master) 
         toolbar.update()  
         toolbar.pack(expand=False, fill='x')
 
+        # Initalize the artists
+        self.artists = []
+
 
     def plot_graph(self):
-        # Plotting the graph 
-        self.data_object._briann.plot_graph(axes=self.axes)
+        # Clear the artists from the old graph 
+        for artist in self.artists: 
+            if isinstance(artist, list):
+                for item in artist: item.remove()
+            elif isinstance(artist, dict):
+                for item in artist.values(): item.remove()
+            else:
+                artist.remove()
+
+        # Plot the new graph       
+        self.artists = self.data_object._briann.plot_graph(axes=self.axes)
         self.canvas.draw()
         
         

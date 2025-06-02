@@ -84,6 +84,9 @@ class TimeFrame():
         """:return: The end time of the time frame.
         :rtype: float"""
         return self._end_time   
+
+    def __repr__(self) -> str:
+        return f"TimeFrame(index={self._index}, start_time={self._start_time}, duration={self._duration}, end_time={self._end_time})"
     
 class TimeFrameBuffer():
     """The buffer maintains :py:class:`collections.deque` of :py:class:`.TimeFrame` objects and ensures that for each such :py:class:`.TimeFrame`,
@@ -183,6 +186,9 @@ class TimeFrameBuffer():
             self._deque.clear()
             if keep_latest: self._deque.append(tmp[0])
             return tmp
+        
+    def __repr__(self) -> str:
+        return f"TimeFrameBuffer(start_time={self.start_time}, duration={self.duration}, end_time={self.end_time}), _deque={self._deque}."
             
 class Connection(torch.nn.Module):
     """A connection between an :py:class:`Area` and a :py:class:`.TimeFrameBuffer`. This is analogous to a neural tract between areas of a biological neural network that not only sends information but also converts it between the reference frames of the input and output area.
@@ -277,12 +283,12 @@ class Connection(torch.nn.Module):
         
         # Create a new time frame with the transformed state
         new_time_frame = TimeFrame(state=transformed_time_frame, index=time_frame.index, start_time=time_frame.start_time, duration=time_frame.duration)
-        
+        print(f"Sent time frame {time_frame} from area {self.from_area_index} to {self.to_area_index}.")
+    
         # Insert the new time frame into the output time_frame_buffer's buffer
         self._output_time_frame_buffer.insert(time_frame=new_time_frame)
 
-        print(f"Sent state of shape {new_time_frame.state.shape} from area {self.from_area_index} to {self.to_area_index}.")
-    
+        
     def reset(self) -> None:
         """Resets the :py:meth:`~.Connection.output_time_frame_buffer` of this connection such that it only contains the transformed :py:meth:`.Connection.initial_time_frame`. This method should be called every time a new trial is simulated."""
 
@@ -295,7 +301,7 @@ class Connection(torch.nn.Module):
 
     def __repr__(self) -> str:
         """Returns a string representation of the connection."""
-        return f"Connection(from_area_index={self._from_area_index}, to_area_index={self._to_area_index}, transformation={self._transformation.__class__.__name__})"
+        return f"Connection(from_area_index={self._from_area_index}, to_area_index={self._to_area_index}, transformation={self._transformation.__class__.__name__}, time_frame_buffer=\n\t{self._output_time_frame_buffer})"
   
 class Area(torch.nn.Module):
     """A area corresponds to a small population of biological neurons that jointly hold one representation. It has a state that is updated by transforming and aggregating inputs from other areas.
@@ -438,14 +444,14 @@ class Area(torch.nn.Module):
         """
 
         # Iterate all input time_frame_buffers and clear them
-        states = {}
+        states = []
         for area_index, time_frame_buffer in self._input_time_frame_buffers.items():
             print(f"Area {self.index} has {time_frame_buffer.time_frame_count} time frames from area {area_index} in buffer.")
             
             # Get all time frames from the current input_time_frame_buffer
             time_frames = time_frame_buffer.clear(keep_latest=True)
             if len(time_frames) > 1: time_frames = time_frames[1:] # Trim off the oldest time frame since it has been processed already in the previous iteration. Note, if it is the only time-frame, it shall be processed again to smooth out the processing of the overall network
-            states[area_index] = torch.concat([time_frame.state.unsqueeze(Area.TIME_AXIS) for time_frame in time_frames], dim=Area.TIME_AXIS)
+            states.append(torch.concat([time_frame.state.unsqueeze(Area.TIME_AXIS) for time_frame in time_frames], dim=Area.TIME_AXIS))
             
         # Apply transformation to the states
         self._state = self._transformation.forward([self._state, states])
@@ -650,7 +656,7 @@ class BasicAreaTransformation(torch.nn.Module):
         calling_area_state, input_states = inputs
 
         # Concatenate averaged the time frames
-        concatenated = [None] * len(input_states) + 1
+        concatenated = [None] * (len(input_states) + 1)
         concatenated[0] = calling_area_state
         for i, input_state in enumerate(input_states):
             concatenated[i+1] = torch.mean(input_state, dim=Area.TIME_AXIS)
@@ -684,8 +690,12 @@ class BrIANN(torch.nn.Module):
         # Set the time of the simulation
         self._simulation_time = 0.0
 
+        # Set next areas 
+        self._next_areas = []
+
         # Set the flag to indicate that all states are reset
         self._all_states_reset = False
+
 
     @property
     def areas(self) -> Dict[int, Area]:
@@ -850,7 +860,7 @@ class BrIANN(torch.nn.Module):
 
     def step(self) -> TimeFrame:
         """Performs one step of the simulation by processing the next :py:class:`.TimeFrame` from the input stimuli and passing it through the areas.
-        This method needs to be called repeatedly until all time frames until the end of the simulation.
+        This method needs to be called repeatedly until the end of the simulation.
 
         :raises Exception: if the simulation is over.
         :return: The current time frame output by the target area, in case the target area was due in the current step. Otherwise, None is return
@@ -871,7 +881,6 @@ class BrIANN(torch.nn.Module):
             elif area_next_time < min_time - 1e-10: # Current area is due sooner 
                 self._next_areas = [area]
                 min_time = area_next_time
-
         
         # Propagate
         for area in self._next_areas: area.forward()
@@ -886,49 +895,58 @@ class BrIANN(torch.nn.Module):
                                        index=target_area.produced_time_frame_count-1, # Subtract 1, since the target area already incremeted its counter during the forward call
                                        start_time=target_area.produced_time_frame_count * target_area.processing_time, 
                                        duration=target_area.processing_time)
+            return new_time_frame
         else:
             return None
         
-    def plot_graph(self, axes: plt.Axes = None) -> Dict[int, np.ndarray]:
+    def plot_graph(self, axes: plt.Axes = None) -> List:
         """Plots the areas and connections of the model using a circular layout.
 
         :param axes: In case the plot should be placed on a particular pair of axes, they can be provided here.
         :type axes: matplotlib.pyplot.Axes, optional, defaults to None
-        :return area_positions: The positions of the areas on the 2D plane.
-        :rtype: Dict[int, numpy.ndarray]
+        :return artists: A list of artists, or artist lists or artist dictionaries that have been created during plotting.
+        :rtype: List
         """
 
         # Create a directed graph
         G = nx.DiGraph()
-
+        node_colors = []
+        
         # Add nodes for each area
         for area in self._areas.values():
             G.add_node(area.index, label=area.index)
-
+            node_colors.append('orange' if area in self._next_areas else 'lightgray')
+        
         # Add edges for each connection
+        edge_list = []
         for from_area_index, connections in self._connection_from.items():
             for connection in connections:
-                G.add_edge(from_area_index, connection.to_area_index)
+                edge_list.append((from_area_index, connection.to_area_index, {'length': 1}))
+        G.add_edges_from(edge_list)
 
         # Draw the graph
         if axes == None:
-                
             plt.figure(figsize=(15,10))
             axes = self.fig.add_subplot()
             
         # Graph
         area_positions = nx.circular_layout(G)
-        nx.draw(G, area_positions, ax=axes, with_labels=True, labels=nx.get_node_attributes(G, 'label'), node_size=2000, node_color='lightblue', font_size=10, font_color='black', arrows=True)
+        scatter = nx.draw_networkx_nodes(G, area_positions, ax=axes, node_color=node_colors, node_size=800, alpha= 0.9)
+        node_labels = nx.draw_networkx_labels(G, area_positions, ax=axes)
         
-        if hasattr(self, "_next_areas"):
-            options = {"edgecolors": "tab:gray", "node_size": 800, "alpha": 0.9}
-            nx.draw_networkx_nodes(G, area_positions, nodelist=[area.index for area in self._next_areas], node_color="tab:red", **options)
+        curved_edges = [edge for edge in G.edges() if reversed(edge) in G.edges()]
+        straight_edges = list(set(G.edges()) - set(curved_edges))
+        straight_edges = nx.draw_networkx_edges(G, area_positions, ax=axes, edgelist=straight_edges, arrows=True, node_size=800, alpha= 0.9)
+        curved_edges = nx.draw_networkx_edges(G, area_positions, ax=axes, edgelist=curved_edges, connectionstyle=f'arc3, rad = {0.25}', arrows=True, node_size=800, alpha= 0.9)
+
+        edge_labels = dict([((u, v,), f'{d["length"]}\n\n{G.edges[(v,u)]["length"]}') for u, v, d in G.edges(data=True) if area_positions[u][0] > area_positions[v][0]])
+        edge_labels = nx.draw_networkx_edge_labels(G, area_positions, edge_labels=edge_labels, font_color='red')
 
         # Area data
-        for area_index, position in area_positions.items():
-            axes.text(x=1.2*position[0], y=1.2*position[1], s='Hello')
+        #for area_index, position in area_positions.items():
+        #    axes.text(x=1.2*position[0], y=1.2*position[1], s='Hello')
 
-        return area_positions
+        return [scatter, node_labels, straight_edges, curved_edges, edge_labels]
         """
         # Adjacency
         plt.subplot(1,2,2)
@@ -940,3 +958,15 @@ class BrIANN(torch.nn.Module):
 
         plt.show()
         """
+
+    def __repr__(self) -> str:
+        string = "BrIANN\n"
+
+        for area in self._areas.values(): 
+            string += f"{area}\n"
+            for connection in self._connection_from[area.index]:
+                string += f"\t{connection}\n"
+
+        return string
+
+
