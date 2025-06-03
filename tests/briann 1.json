@@ -74,7 +74,7 @@
             "initial_state": "torch.zeros(10)",
             "transformation": "BasicAreaTransformation(input_dimensionality=10, output_dimensionality=10)",
             "update_rate": 1.0
-        }
+        } 
     ]
     
 }

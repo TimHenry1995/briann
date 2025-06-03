@@ -403,7 +403,7 @@ class Area(torch.nn.Module):
         :rtype: Dict[int, TimeFrameBuffer]
         """
         return self._input_time_frame_buffers
-    
+        
     @property
     def output_connections(self) -> Dict[int, Connection]:
         """:return: A dictionary where each key is the index of the area to which the connection projects and each value is a :py:class:`.Connection` object. These output connections are used to send the updated state of this area to the :py:class:`.TimeFrameBuffer` objects of other areas.
@@ -444,17 +444,13 @@ class Area(torch.nn.Module):
         """
 
         # Iterate all input time_frame_buffers and clear them
-        states = []
+        input_area_index_to_time_frames = {}
         for area_index, time_frame_buffer in self._input_time_frame_buffers.items():
             print(f"Area {self.index} has {time_frame_buffer.time_frame_count} time frames from area {area_index} in buffer.")
-            
-            # Get all time frames from the current input_time_frame_buffer
-            time_frames = time_frame_buffer.clear(keep_latest=True)
-            if len(time_frames) > 1: time_frames = time_frames[1:] # Trim off the oldest time frame since it has been processed already in the previous iteration. Note, if it is the only time-frame, it shall be processed again to smooth out the processing of the overall network
-            states.append(torch.concat([time_frame.state.unsqueeze(Area.TIME_AXIS) for time_frame in time_frames], dim=Area.TIME_AXIS))
+            input_area_index_to_time_frames[area_index] = time_frame_buffer.clear(keep_latest=False)
             
         # Apply transformation to the states
-        self._state = self._transformation.forward([self._state, states])
+        self._state = self._transformation.forward(area_state=self._state, input_area_index_to_time_frames=input_area_index_to_time_frames)
 
         # Create a new time frame for the current state
         new_time_frame = TimeFrame(state=self._state, index=self._produced_time_frame_count, start_time=self._produced_time_frame_count*self._processing_time, duration=self._processing_time)
@@ -630,34 +626,40 @@ class BasicAreaTransformation(torch.nn.Module):
     * The state of the calling :py:class:`.Area` is assumed to be a mere torch.Tensor object, i.e. it is not a list of torch.Tensor objects.
     * The input states of the other :py:class:`.Area` s are assumed to be torch.Tensor objects of shape [instance count, time frame count, dimensionality]. 
 
-    :param input_dimensionality: The dimensionality of the input. This is the sum of the dimensionalities of all inputs (inclduing the state of the calling area).
+    :param input_area_index_to_input_shape: A dictionary where each key is the index of an area that inputs to the calling area and each value is the shape of the statesThe dimensionality of the input. This is the sum of the dimensionalities of all inputs (inclduing the state of the calling area).
     :type input_dimensionality: int
     :param output_dimensionality: The dimensionality that the output state shall have.
     :type output_dimensionality: int
     """
 
-    def __init__(self, input_dimensionality: int, output_dimensionality: int) -> "BasicAreaTransformation":
+    def __init__(self, input_area_index_to_input_shape: Dict[int, List[int]], output_dimensionality: int) -> "BasicAreaTransformation":
         
         # Call the parent constructor
         super().__init__()
 
-        # Set linear transformation
-        self.linear = torch.nn.Linear(input_dimensionality, output_dimensionality)
+        # Set input states
+        self._input_states = {}
+        total_input_dimensionality = 0
+        for area_index, shape in input_area_index_to_input_shape.items():
+            self._input_states[area_index] = torch.zeros(size=shape)
+            total_input_dimensionality += torch.numel(self._input_states[area_index])
 
-    def forward(self, inputs: Tuple[torch.Tensor, List[torch.Tensor]]) -> torch.Tensor:
+        # Set linear transformation
+        self.linear = torch.nn.Linear(total_input_dimensionality, output_dimensionality)
+
+    def forward(self, area_state: torch.Tensor | List[torch.Tensor], input_area_index_to_time_frames: Dict[int, List[TimeFrame]]) -> torch.Tensor:
         """Applies the main calculation of this module to the given **inputs** and returns the result.
 
-        :param inputs: A tuple of two elements. The first element corresponds to the :py:meth:`~.Area.state` of the calling area. The second element is a list of torch.Tensor objects that are extracted and concatenated from each of the :py:meth:`~.Area.input_time_frame_buffers` of the calling area. 
-        :type inputs: Tuple[torch.Tensor, List[torch.Tensor]]
+        :param area_state: The :py:meth:`~.Area.state` of the calling area. 
+        :type area_state: torch.Tensor | List[torch.Tensor]
+        :param input_area_index_to_time_frames: A dictionary where each key is the index of an input area and each value is the list of :py:class`.TimeFrame` objects taken from the's :py:meth:`~.Area.input_time_frame_buffers` of the calling area. 
+        :type input_area_index_to_time_frames: Dict[int, List[TimeFrame]]
         :return: The result of the main calculation.
         :rtype: torch.Tensor
         """
-        # Unpack inputs
-        calling_area_state, input_states = inputs
-
         # Concatenate averaged the time frames
         concatenated = [None] * (len(input_states) + 1)
-        concatenated[0] = calling_area_state
+        concatenated[0] = area_state
         for i, input_state in enumerate(input_states):
             concatenated[i+1] = torch.mean(input_state, dim=Area.TIME_AXIS)
         concatenated = torch.concat(concatenated, dim=-1)
@@ -921,7 +923,7 @@ class BrIANN(torch.nn.Module):
         edge_list = []
         for from_area_index, connections in self._connection_from.items():
             for connection in connections:
-                edge_list.append((from_area_index, connection.to_area_index, {'length': 1}))
+                edge_list.append((from_area_index, connection.to_area_index, {'label': '|' * connection.output_time_frame_buffer.time_frame_count }))
         G.add_edges_from(edge_list)
 
         # Draw the graph
@@ -937,16 +939,21 @@ class BrIANN(torch.nn.Module):
         curved_edges = [edge for edge in G.edges() if reversed(edge) in G.edges()]
         straight_edges = list(set(G.edges()) - set(curved_edges))
         straight_edges = nx.draw_networkx_edges(G, area_positions, ax=axes, edgelist=straight_edges, arrows=True, node_size=800, alpha= 0.9)
-        curved_edges = nx.draw_networkx_edges(G, area_positions, ax=axes, edgelist=curved_edges, connectionstyle=f'arc3, rad = {0.25}', arrows=True, node_size=800, alpha= 0.9)
+        curved_edges = nx.draw_networkx_edges(G, area_positions, ax=axes, edgelist=curved_edges, connectionstyle=f'arc3, rad = {0.1}', arrows=True, node_size=800, alpha= 0.9)
 
-        edge_labels = dict([((u, v,), f'{d["length"]}\n\n{G.edges[(v,u)]["length"]}') for u, v, d in G.edges(data=True) if area_positions[u][0] > area_positions[v][0]])
-        edge_labels = nx.draw_networkx_edge_labels(G, area_positions, edge_labels=edge_labels, font_color='red')
+        straight_edge_labels = {}
+        curved_edge_labels = {}
+        for u, v, d in G.edges(data=True): 
+            if (v,u) in G.edges(): curved_edge_labels[(u,v)] = d['label']
+            else: straight_edge_labels[(u,v)] = d['label']
+        straight_edge_labels = nx.draw_networkx_edge_labels(G, area_positions, ax=axes, edge_labels=straight_edge_labels, font_color='black', label_pos=0.5)
+        curved_edge_labels = BrIANN.my_draw_networkx_edge_labels(G, area_positions, ax=axes, edge_labels=curved_edge_labels, font_color='black', rad=0.1)
 
         # Area data
         #for area_index, position in area_positions.items():
         #    axes.text(x=1.2*position[0], y=1.2*position[1], s='Hello')
 
-        return [scatter, node_labels, straight_edges, curved_edges, edge_labels]
+        return [scatter, node_labels, straight_edges, curved_edges, straight_edge_labels, curved_edge_labels]
         """
         # Adjacency
         plt.subplot(1,2,2)
@@ -958,6 +965,88 @@ class BrIANN(torch.nn.Module):
 
         plt.show()
         """
+
+    def my_draw_networkx_edge_labels(G, pos, edge_labels=None, font_size=10, font_color="k", font_family="sans-serif", font_weight="normal", alpha=None, bbox=None, horizontalalignment="center", verticalalignment="center", ax=None, rotate=True, clip_on=True, rad=0):
+        # Taken from https://stackoverflow.com/questions/22785849/drawing-multiple-edges-between-two-nodes-with-networkx
+        if ax is None:
+            ax = plt.gca()
+        if edge_labels is None:
+            labels = {(u, v): d for u, v, d in G.edges(data=True)}
+        else:
+            labels = edge_labels
+        text_items = {}
+        for (n1, n2), label in labels.items():
+            (x1, y1) = pos[n1]
+            (x2, y2) = pos[n2]
+            
+            # Find the midpoint on the bezier curve
+            pos_1 = ax.transData.transform(np.array(pos[n1]))
+            pos_2 = ax.transData.transform(np.array(pos[n2]))
+            linear_mid = 0.5*pos_1 + 0.5*pos_2
+            d_pos = pos_2 - pos_1
+            rotation_matrix = np.array([(0,1), (-1,0)])
+            ctrl_1 = linear_mid + rad*rotation_matrix@d_pos
+            ctrl_mid_1 = 0.5*pos_1 + 0.5*ctrl_1
+            ctrl_mid_2 = 0.5*pos_2 + 0.5*ctrl_1
+            bezier_mid = 0.5*ctrl_mid_1 + 0.5*ctrl_mid_2
+            """
+            # Find the equation of a circle passing through the two nodes and the bezier mid point
+            p = pos_1; q = bezier_mid; r = pos_2
+
+            # 1. for p and q
+            grad_p_q = (q[1]-p[1])/(q[0]-p[0]) # rise over run gradient p to q
+            grad_p_q_bisector = -1/grad_p_q # The gradient of the perpendicular bisector
+            p_q_mid = 0.5*(q+p) # Midpoint between p and q
+            intercept_p_q_bisector = p_q_mid[1] - p_q_mid[0]/grad_p_q_bisector 
+            
+            # 2. for q and r
+            grad_q_r = (r[1]-q[1])/(r[0]-q[0]) # rise over run gradient p to q
+            grad_q_r_bisector = -1/grad_q_r # The gradient of the perpendicular bisector
+            q_r_mid = 0.5*(r+q) # Midpoint between p and q
+            intercept_q_r_bisector = q_r_mid[1] - q_r_mid[0]/grad_q_r_bisector 
+            q_r_bisector = lambda x: grad_q_r_bisector*x + intercept_q_r_bisector
+
+            # 3. find the center of the circle, i.e. the x and y at the intersection of the two bisectors
+            x = (intercept_q_r_bisector-intercept_p_q_bisector)/(grad_p_q_bisector - grad_q_r_bisector)
+            center = np.squeeze(np.linalg.solve(np.array([[1, -grad_p_q_bisector],[1, -grad_q_r_bisector]]), np.array([[intercept_p_q_bisector],[intercept_q_r_bisector]])))#np.array([x, q_r_bisector(x)]) 
+            
+            # 4. find the angle at which p and q are on the circle
+            radius = np.sqrt((center[0]-p[0])**2 + (center[1]-p[1])**2)
+            angle_center_p = np.arctan2((p[1]-center[1]), p[0]-center[0])
+            angle_center_r = np.arctan2((r[1]-center[1]), r[0]-center[0])
+            delta_angle = angle_center_p - angle_center_r
+            target_angle = angle_center_r + label_pos*delta_angle # The angle that the label should have
+            label_coordinates = center + radius * np.array([np.cos(target_angle), np.sin(target_angle)])"""
+
+            (x, y) = ax.transData.inverted().transform(bezier_mid)
+
+            if rotate:
+                # in degrees
+                angle = np.arctan2(y2 - y1, x2 - x1) / (2.0 * np.pi) * 360
+                # make label orientation "right-side-up"
+                if angle > 90:
+                    angle -= 180
+                if angle < -90:
+                    angle += 180
+                # transform data coordinate angle to screen coordinate angle
+                xy = np.array((x, y))
+                trans_angle = ax.transData.transform_angles(
+                    np.array((angle,)), xy.reshape((1, 2))
+                )[0]
+            else:
+                trans_angle = 0.0
+            # use default box of white with white border
+            if bbox is None:
+                bbox = dict(boxstyle="round", ec=(1.0, 1.0, 1.0), fc=(1.0, 1.0, 1.0))
+            if not isinstance(label, str):
+                label = str(label)  # this makes "1" and 1 labeled the same
+
+            t = ax.text(x,y, label, size=font_size, color=font_color, family=font_family,  weight=font_weight, alpha=alpha, horizontalalignment=horizontalalignment, verticalalignment=verticalalignment,  rotation=trans_angle,  transform=ax.transData, bbox=bbox, zorder=1, clip_on=clip_on,)
+            text_items[(n1, n2)] = t
+
+        ax.tick_params(axis="both", which="both", bottom=False, left=False, labelbottom=False, labelleft=False)
+
+        return text_items
 
     def __repr__(self) -> str:
         string = "BrIANN\n"
