@@ -18,23 +18,19 @@ class TimeFrame():
     :type state: :py:class:`torch.Tensor`
     :param index: Sets the :py:attr:`~.TimeFrame.index` of this time frame.
     :type index: int
-    :param start_time: Sets the :py:attr:`~.TimeFrame.start_time` of this time frame.
-    :type start_time: float
-    :param duration: Sets the :py:attr:`~.TimeFrame.duration` of this time frame.
-    :type duration: float
+    :param time_point: Sets the :py:attr:`~.TimeFrame.time_point` of this time frame.
+    :type time_point: float
     """
+    # :param start_time: Sets the :py:attr:`~.TimeFrame.start_time` of this time frame.
+    # :type start_time: float
+    # :param duration: Sets the :py:attr:`~.TimeFrame.duration` of this time frame.
+    # :type duration: float
     
-    def __init__(self, state: torch.Tensor | List[torch.Tensor], index: int, start_time: float, duration: float) -> "TimeFrame":
+    def __init__(self, state: torch.Tensor, index: int, time_point: float) -> "TimeFrame": #start_time: float, duration: float) -> "TimeFrame":
         
         # Set state
-        if isinstance(state, list):
-            if len(state) == 0:
-                raise ValueError(f"The state must not be an empty list.")
-            for i in range(len(state)):
-                if not isinstance(state[i], torch.Tensor):
-                    raise TypeError(f"If the state is a list, it must be a list of torch.Tensor objects.")
-        elif not isinstance(state, torch.Tensor):
-            raise TypeError(f"State must be a torch.Tensor.")
+        if not isinstance(state, torch.Tensor):
+            raise TypeError(f"The state must be a torch.Tensor.")
         self._state = state
         
         # Set index
@@ -42,7 +38,12 @@ class TimeFrame():
             raise TypeError("The index must be an int.")
         self._index = index
 
-        # Set times
+        # Set 
+        if not isinstance(time_point, float):
+            raise TypeError("The time_point must be a float.")
+        self._time_point = time_point
+
+        """
         if not isinstance(start_time, float):
             raise TypeError("The start time must be a float.")
         self._start_time = start_time
@@ -54,6 +55,7 @@ class TimeFrame():
         self._duration = duration
 
         self._end_time = start_time + duration
+        """
 
     @property
     def state(self) -> torch.Tensor:
@@ -67,6 +69,13 @@ class TimeFrame():
         :rtype: int"""
         return self._index
     
+    @property
+    def time_point(self) -> float:
+        """:return: The time point at which this time frame's :py:meth:`~.TimeFrame.state` occured.
+        :rtype: float"""
+        return self._time_point
+
+    '''
     @property
     def start_time(self) -> float:
         """:return: The start time of the time frame.
@@ -87,7 +96,10 @@ class TimeFrame():
 
     def __repr__(self) -> str:
         return f"TimeFrame(index={self._index}, start_time={self._start_time}, duration={self._duration}, end_time={self._end_time})"
-    
+    """
+    '''
+
+'''
 class TimeFrameBuffer():
     """The buffer maintains :py:class:`collections.deque` of :py:class:`.TimeFrame` objects and ensures that for each such :py:class:`.TimeFrame`,
     
@@ -98,16 +110,41 @@ class TimeFrameBuffer():
     
     * This class is intended to be used for time frames that are *contiguous*, i.e. time frames that are ascending and have no gaps larger than :py:meth:`TimeFrameBuffer.ERROR_MARGIN` in between them.  
     * The buffer is not thread-safe, i.e. it is not safe to add or remove :py:class:`.TimeFrame` objects from the buffer from multiple threads at the same time.
+
+    :param initial_state: Sets the :py:attr:`~.TimeFrameBuffer.state` of this time frame buffer.
+    :type initial_state: :py:class:`torch.Tensor`
+    :param decay_weight: The weight that is applied 
+    :type decay_weight:
     """
 
     ERROR_MARGIN = 1e-10 
     """The error margin used to determine whether two time frames are contiguous. This is a static constant."""
 
-    def __init__(self) -> "TimeFrameBuffer":
+    def __init__(self, initial_state: torch.Tensor, decay_weight: float | torch.autograd.Variable) -> "TimeFrameBuffer":
             
         # Set deque
         self._deque = deque()
+        
+        # Set state
+        if not isinstance(initial_state, torch.Tensor):
+            raise TypeError(f"The initial state must be a torch.Tensor.")
+        self._state = initial_state
+
+        # Set decay_weight
+        if not isinstance(decay_weight, float) or isinstance(decay_weight, torch.autograd.Variable):
+            raise TypeError("The decay_weight should be a float or a torch.autograd.Variable")
+        self._decay_weight = decay_weight
     
+    @property
+    def state(self) -> torch.Tensor:
+        """:return: The state of the time frame buffer. This is a :py:class:`torch.tensor` without an explicit time axis, for instance of shape [instance count, dimensionality].
+        :rtype: torch.Tensor"""
+        return self._state
+
+    @property
+    def decay_weight(self) -> float | torch.autograd.Variable:
+
+
     @property
     def start_time(self) -> float:
         """:raises Exception: If the :py:meth:`time_frame_count` is 0.
@@ -144,6 +181,10 @@ class TimeFrameBuffer():
         :rtype: int"""
         return len(self._deque)
 
+    @property
+    def decay_function(self) -> callable:
+        """:return: The function that is used within :py:meth:`~.TimeFrameBuffer.clear` to weigh"""
+
     def insert(self, time_frame: TimeFrame) -> None:
         """Appends the given **time_frame** to the latest end of the :py:attr:`.TimeFrameBuffer`. 
 
@@ -171,11 +212,9 @@ class TimeFrameBuffer():
         else:
             return self._deque.pop()
     
-    def clear(self, keep_latest: bool = True) -> List[TimeFrame]:
+    def clear(self) -> List[TimeFrame]:
         """Removes all :py:class:`.TimeFrame` objects from the buffer and returns them.
 
-        :param keep_latest: A flag indicating whether the most recent time frame should be kept in the buffer.
-        :type keep_latest: bool, optional, defaults to True
         :return: A list of all :py:class:`.TimeFrame` objects that were in the buffer.
         :rtype: List[:py:class:`.TimeFrame`]
         """
@@ -184,12 +223,76 @@ class TimeFrameBuffer():
         else:
             tmp = list(self._deque)
             self._deque.clear()
-            if keep_latest: self._deque.append(tmp[0])
             return tmp
         
+    def accumulate(self) -> torch.Tensor:
+        """Takes all :py:class:`.TimeFrame` objects from the buffer, computes the distance of each one's :py:meth:`~.TimeFrame.end_time` and the most recent time-frame's :py:meth:`~.TimeFrame.end_time` and passes them through the :py:meth:`~.TimeFrameBuffer.decay_function`. 
+        The resulting weights are used to create a weighted sum over the :py:meth:`~.TimeFrame.state` objects of all time frames in the buffer. 
+        
+        :return: The time-decay weighted sum over the :py:meth:`~.TimeFrame.state` objects of all :py:class:`.TimeFrame` in the buffer.
+        :rtype: torch.Tensor"""
+
+        state = 
+        for time_frame in self._deque:
+            weight = self.decay_function(self.end_time - time_frame.end_time)
+
+
     def __repr__(self) -> str:
         return f"TimeFrameBuffer(start_time={self.start_time}, duration={self.duration}, end_time={self.end_time}), _deque={self._deque}."
-            
+'''
+
+class TimeFrameAccumulator():
+    """
+    :param initial_time_frame: Sets the :py:attr:`~.TimeFrameAccumulator.time_frame` of this time frame accumulator.
+    :type initial_time_frame: :py:class:`.TimeFrame`
+    :param decay_rate: Sets the :py:meth:`~.TimeFrameAccumulator.decay_rate` property of self.
+    :type decay_rate: float | torch.autograd.Variable
+    """
+
+    def __init__(self, initial_time_frame: TimeFrame, decay_rate: float | torch.autograd.Variable) -> "TimeFrameAccumulator":
+           
+        # Set time frame
+        if not isinstance(initial_time_frame, TimeFrame):
+            raise TypeError(f"The initial_time_frame must be a TimeFrame.")
+        self._time_frame = initial_time_frame
+
+        # Set decay rate
+        if not isinstance(decay_rate, float) or isinstance(decay_rate, torch.autograd.Variable):
+            raise TypeError("The decay_rate should be a float or a torch.autograd.Variable.")
+        self._decay_rate = decay_rate
+    
+    @property
+    def time_frame(self) -> TimeFrame:
+        """:return: The time frame of this accumulator. It holds the sum of all :py:class:`.TimeFrame` objects added via the :py:meth:`~.TimeFrameAccumulator.accumulate` method.
+        :rtype: :py:class:`.TimeFrame`"""
+        return self._time_frame
+
+    @property
+    def decay_rate(self) -> float | torch.autograd.Variable:
+        """:return: The rate at which the energy of the :py:meth:`~.TimeFrame.state` of :py:meth:`~.TimeFrameAccumulator.time_frame` decays as time passes. This rate is recommended to be greater than 1, in order to have true exponential decay. See py:meth:`~.TimeFrameAccumulator.accumulate` for details.
+        :rtype: float | torch.autograd.Variable"""
+        return self._decay_rate
+        
+    def accumulate(self, time_frame: TimeFrame) -> None:
+        """Sets the :py:meth:`~.TimeFrame.state` of the :py:meth:`~.TimeFrameAccumulator.time_frame` of self equal to the weighted sum of 
+        the state of the new `time_frame` and the state the current time frame of self. The weight for the old state is 
+        w = :py:meth:`~.TimeFrameAccumulator.decay_rate`^dt, where dt is the time of the time frame currently held by self minus the more
+        recent time of the new `time_frame`. Hence, dt is a negative number. The weight for the new `time_frame` is simply equal to 1.
+        This method also sets the :py:meth:`~.TimeFrame.time_point` of the time frame of self equal to that of the new `time_frame`.
+
+        :param time_frame: A new time frame to be merged into the :py:meth:`~.TimeFrameAccumulator.time_frame` of self.
+        :type time_frame: TimeFrame
+        """
+        
+        # Ensure data correctness
+        if self.time_frame.time_point >= time_frame.time_point:
+            raise ValueError("The new time_frame needs to occur later in time than the current time frame.")
+        
+        # Update time frame
+        dt = self.time_frame.time_point - time_frame.time_point
+        self._time_frame = TimeFrame(state=self.time_frame.state*self.decay_rate**dt, time_point=time_frame.time_point)
+        
+
 class Connection(torch.nn.Module):
     """A connection between an :py:class:`Area` and a :py:class:`.TimeFrameBuffer`. This is analogous to a neural tract between areas of a biological neural network that not only sends information but also converts it between the reference frames of the input and output area.
     
@@ -310,7 +413,7 @@ class Area(torch.nn.Module):
     :param index: Sets the :py:attr:`~.Area.index` of this area.
     :type index: int
     :param initial_state: Sets the :py:meth:`~.Area.state` of this area. 
-    :type initial_state: torch.Tensor | List[torch.Tensor]
+    :type initial_state: torch.Tensor
     :param input_time_frame_buffers: Sets the :py:meth:`~.Area.input_time_frame_buffers` of this area. 
     :type input_time_frame_buffers: Dict[int, :py:class:`.TimeFrameBuffer`]
     :param output_connections: Sets the :py:meth:`~.Area.output_connections` of this area.
@@ -327,7 +430,7 @@ class Area(torch.nn.Module):
     TIME_AXIS = 1
     """The time axis of this area. This is the axis along which the time frames are concatenated when being read from a :py:class:`.TimeFrameBuffer`."""
 
-    def __init__(self, index: int, initial_state: torch.Tensor | List[torch.Tensor], input_time_frame_buffers: Dict[int, TimeFrameBuffer], output_connections: Dict[int, Connection], transformation: torch.nn.Module, update_rate: float) -> "Area":
+    def __init__(self, index: int, initial_state: torch.Tensor, input_time_frame_buffers: Dict[int, TimeFrameBuffer], output_connections: Dict[int, Connection], transformation: torch.nn.Module, update_rate: float) -> "Area":
         
         # Call the parent constructor
         super().__init__()
@@ -338,13 +441,7 @@ class Area(torch.nn.Module):
         self._index = index
         
         # Set state
-        if isinstance(initial_state, list):
-            if len(initial_state) == 0:
-                raise ValueError(f"The initial state of area {index} must not be an empty list.")
-            for i in range(len(initial_state)):
-                if not isinstance(initial_state[i], torch.Tensor):
-                    raise TypeError(f"If the initial state of area {index} is a list, it must be a list of torch.Tensor objects.")
-        elif not isinstance(initial_state, torch.Tensor):
+        if not isinstance(initial_state, torch.Tensor):
             raise TypeError(f"Initial state of area {index} must be a torch.Tensor.")
         self._state = initial_state
         self._initial_state = initial_state
@@ -392,9 +489,9 @@ class Area(torch.nn.Module):
         return self._index
 
     @property
-    def state(self) -> torch.Tensor | List[torch.Tensor]:
+    def state(self) -> torch.Tensor:
         """:return: The state of this area.
-        :rtype: torch.Tensor | List[torch.Tensor]"""
+        :rtype: torch.Tensor"""
         return self._state
 
     @property
@@ -482,7 +579,7 @@ class Source(Area):
     :param index: Sets the :py:attr:`~.Area.index` of this area.
     :type index: int
     :param initial_state: Sets the :py:meth:`~.Area.state` of this area. 
-    :type initial_state: torch.Tensor | List[torch.Tensor]
+    :type initial_state: torch.Tensor
     :param output_connections: Sets the :py:meth:`~.Area.output_connections` of this area.
     :type output_connections: Dict[int, :py:class:`.Connection`]
     :param update_rate: Sets the :py:meth:`~.Area.update_rate` of this area.
@@ -530,7 +627,7 @@ class Source(Area):
     
     @property
     def remaining_cool_down_duration(self) -> float:
-        """The remaining :py:meth:`~.Source.cool_down_duration` to be discounted once the current stimuli have been streamed. This is used to determine the end of the simulation.
+        """The remaining :py:meth:`~.Source.cool_down_duration` to be decayed once the current stimuli have been streamed. This is used to determine the end of the simulation.
 
         :return: The cool down duration.
         :rtype: float
@@ -647,11 +744,11 @@ class BasicAreaTransformation(torch.nn.Module):
         # Set linear transformation
         self.linear = torch.nn.Linear(total_input_dimensionality, output_dimensionality)
 
-    def forward(self, area_state: torch.Tensor | List[torch.Tensor], input_area_index_to_time_frames: Dict[int, List[TimeFrame]]) -> torch.Tensor:
+    def forward(self, area_state: torch.Tensor, input_area_index_to_time_frames: Dict[int, List[TimeFrame]]) -> torch.Tensor:
         """Applies the main calculation of this module to the given **inputs** and returns the result.
 
         :param area_state: The :py:meth:`~.Area.state` of the calling area. 
-        :type area_state: torch.Tensor | List[torch.Tensor]
+        :type area_state: torch.Tensor
         :param input_area_index_to_time_frames: A dictionary where each key is the index of an input area and each value is the list of :py:class`.TimeFrame` objects taken from the's :py:meth:`~.Area.input_time_frame_buffers` of the calling area. 
         :type input_area_index_to_time_frames: Dict[int, List[TimeFrame]]
         :return: The result of the main calculation.
