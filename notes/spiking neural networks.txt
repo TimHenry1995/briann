@@ -1,0 +1,34 @@
+questions
+
+- how to represent cochleagram ? rate coding
+    - rate coding (fast rate for dominant freqiencies, slow rate for silent frequencies)
+    - latency coding (early firing for dominant frequencies, late firing for silent ones)
+
+- should areas have a fixed update rate ? yes, see how to paralelize this
+    - if no, then only process when input arrives, yet this can lead to backlog when too many inputs arrive right after eachother
+    - if yes, then inputs have a time-window in which they can occur and will never have to wait longer than the 1/update rate
+
+- should there be a decay rate for representations?
+    - is biologically plausible since it mimics temporal summation at soma of neuron
+    - might lead to vanishing gradients
+
+- should each area be a separate thread, should it be on separate processor?
+
+- should all areas be directly linked to the output area in order to have a more direct gradient propagation ?
+
+- should areas be setup to oscilate and synchronize when communicating? 
+
+- which loss function is appropriate?
+
+- for the start, is it okay to train the network by simply replacing the heaviside with a sigmoid on the backward pass?
+
+- reading list
+    - https://www.nature.com/articles/s41586-018-0102-6
+
+- look at linear attention, which is an RNN trained in parallel, mamba paper
+
+- dataset shd spiking mnist. https://zenkelab.org/resources/spiking-heidelberg-datasets-shd/
+
+- next monday afternoon amsterdam biologically inspired learning, https://sites.google.com/bohte.com/ccn25-biolearning-satevent/home
+
+- supevision

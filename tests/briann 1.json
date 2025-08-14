@@ -1,42 +1,57 @@
 {
+    "network":
+    {
+        "name": "BrIANN 1",
+        "decay_rate": 0.9,
+        "batch_size": 3
+    },
+
     "connections":
     [
         {
+            "index": 0,
             "from_area_index": 0,
             "to_area_index": 1,
             "transformation": "torch.nn.Linear(3,2)"
         },
         {
+            "index": 1,
             "from_area_index": 0,
             "to_area_index": 2,
             "transformation": "torch.nn.Linear(3,1)"
         },
         {
+            "index": 2,
             "from_area_index": 1,
             "to_area_index": 2,
             "transformation": "torch.nn.Linear(2, 1)"
         },
         {
+            "index": 3,
             "from_area_index": 2,
             "to_area_index": 3,
             "transformation": "torch.nn.Linear(3, 2)"
         },
         {
+            "index": 4,
             "from_area_index": 1,
             "to_area_index": 3,
             "transformation": "torch.nn.Linear(2, 2)"
         },
         {
+            "index": 5,
             "from_area_index": 3,
             "to_area_index": 1,
             "transformation": "torch.nn.Linear(2, 1)"
         },
         {
+            "index": 6,
             "from_area_index": 2,
             "to_area_index": 4,
             "transformation": "torch.nn.Linear(3, 10)"
         },
         {
+            "index": 7,
             "from_area_index": 3,
             "to_area_index": 4,
             "transformation": "torch.nn.Linear(2, 10)"
@@ -46,35 +61,50 @@
     "areas": 
     [
         {
+            "type": "Source",
             "index": 0,
             "initial_state": "torch.zeros(3)",
             "update_rate": 1.0,
-            "cool_down_duration": 0.1
+            "cool_down_duration": 0.1,
+            "dataset_index": 0
         },
         {
+            "type": "Area",
             "index": 1,
             "initial_state": "torch.zeros(2)",
-            "transformation": "BasicAreaTransformation(input_dimensionality=5, output_dimensionality=2)",
+            "transformation": "torch.nn.Linear(5, 2)",
             "update_rate": 2.0
         },
         {
+            "type": "Area",
             "index": 2,
             "initial_state": "torch.zeros(3)",
-            "transformation": "BasicAreaTransformation(input_dimensionality=5, output_dimensionality=3)",
+            "transformation": "torch.nn.Linear(5, 3)",
             "update_rate": 3.0
         },
         {
+            "type": "Area",
             "index": 3,
             "initial_state": "torch.zeros(2)",
-            "transformation": "BasicAreaTransformation(input_dimensionality=6, output_dimensionality=2)",
+            "transformation": "torch.nn.Linear(6, 2)",
             "update_rate": 2.0
         },
         {
+            "type": "Target",
             "index": 4,
             "initial_state": "torch.zeros(10)",
-            "transformation": "BasicAreaTransformation(input_dimensionality=10, output_dimensionality=10)",
+            "transformation": "torch.nn.Linear(10, 10)",
             "update_rate": 1.0
         } 
+    ],
+    "datasets":
+    [
+        {
+            "type": "SequentialMNIST",
+            "index": 0,
+            "folder_path": "C:/Users/P70057764/Downloads/preprocessed mnist seq/sequences",
+            "portion": "test",
+            "padding": "pre"
+        }
     ]
-    
 }
