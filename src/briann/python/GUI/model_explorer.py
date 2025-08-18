@@ -62,14 +62,17 @@ class App(customtkinter.CTk):
     
     @selected_area.setter
     def selected_area(self, new_value):
+        # Ensure input validity
+        if (not new_value == None) and (not isinstance(new_value, bnc.Area)): raise TypeError(f"The selected area was expected to be of type Area but was {type(new_value)}.")
+        
         # Set property
         self._selected_area = new_value
 
         # GUI
         if new_value == None:
-            self.disable_right_sidebar_for_area_editing()
+            self.right_side_frame.disable()
         else:
-            self.enable_right_sidebar_for_area_editing()
+            self.right_side_frame.enable()
 
     def __init__(self):
         # Call super
@@ -109,7 +112,7 @@ class App(customtkinter.CTk):
         self.left_sidebar_frame = customtkinter.CTkFrame(self.body)
         self.left_sidebar_frame.grid(row=0, column=0, sticky="nsew")
         
-        self.right_side_frame = RightSideFrame(master=self.body, dpi=self.dpi)
+        self.right_side_frame = RightSideFrame(master=self.body, app=self)
         self.right_side_frame.grid(row=0, column=2, sticky="nsew")
         
         self.canvas_frame = customtkinter.CTkFrame(self.body)
@@ -276,29 +279,51 @@ class RightSideFrame(customtkinter.CTkFrame):
         # Properties
         self.app = app
 
-        # Area name
-        customtkinter.CTkLabel(self, text="Area Index").grid(row=0, column=0, padx=20, pady=10)
-        self.area_name_text_box = customtkinter.CTkTextbox(self, width=1.5*app.dpi, height=0.25*app.dpi, state='disabled')
-        self.area_name_text_box.grid(row=0, column=1, padx=0, pady=0)
-
+        # Area Index
+        self.area_index_label = customtkinter.CTkLabel(master=self, text="Area Index", anchor='w')
+        self.area_index_label.grid(row=0, column=0, padx=(20,5), pady=10, stick='ew')
+        self.area_index_entry = customtkinter.CTkEntry(master=self, width=0.5*app.dpi, height=0.25*app.dpi, state='disabled')
+        self.area_index_entry.grid(row=0, column=1, padx=5, pady=10, stick='ew')
+        self.area_index_button = customtkinter.CTkButton(master=self, width=0.5*app.dpi, height=0.25*app.dpi, text='Set', state='disabled', command=self.on_area_index_change)
+        self.area_index_button.grid(row=0, column=2, padx=(5,20), pady=10, stick='ew')
+        
         # Update Rate
-        customtkinter.CTkLabel(self, text="Update Rate:").grid(row=1, column=0, padx=20, pady=10)
-        self.update_rate_text_box = customtkinter.CTkTextbox(self, width=1.5*app.dpi, height=0.25*app.dpi, state='disabled')
-        self.right_side_bar_area_update_rate_text_field.grid(row=1, column=1, padx=0, pady=0)
-
+        self.update_rate_label = customtkinter.CTkLabel(master=self, text="Update Rate:", anchor='w')
+        self.update_rate_label.grid(row=1, column=0, padx=(20,5), pady=10, stick='ew')
+        self.update_rate_entry = customtkinter.CTkEntry(master=self, width=0.5*app.dpi, height=0.25*app.dpi, state='disabled')
+        self.update_rate_entry.grid(row=1, column=1, padx=5, pady=10, stick='ew')
+        self.update_rate_button = customtkinter.CTkButton(master=self, width=0.5*app.dpi, height=0.25*app.dpi, text='Set', state='disabled', command=self.on_update_rate_change)
+        self.update_rate_button.grid(row=1, column=2, padx=(5,20), pady=10, stick='ew')
+        
         # Area Type
-        customtkinter.CTkLabel(self, text="Area Type:").grid(row=2, column=0, padx=20, pady=10)
-        self.area_type_menu = customtkinter.CTkOptionMenu(self, values=["Source", "Regular", "Target"], command=self.set_area_type, state='disabled')
+        customtkinter.CTkLabel(master=self, text="Area Type:", anchor='w').grid(row=2, column=0, padx=(20,5), pady=10)
+        self.area_type_menu = customtkinter.CTkOptionMenu(master=self, values=["Source", "Regular", "Target"], command=self.set_area_type, state='disabled')
         self.area_type_menu.set("Regular")
-        self.area_type_menu.grid(row=2, column=1, padx=20, pady=10)
+        self.area_type_menu.grid(row=2, column=1, columnspan=2, padx=(5,20), pady=10)
         
-        # Area Type sepcific frame, for source it is data loading, for regular and target areas it is initial state
+        self.area_editor_frame = None # To be replaced by specific frame once area type is known
         
-    def enable(self):
-        # Assumes we have a selected area
+    def enable(self) -> None:
+        # Assumes that self.app.selected_area exists and is not None
+
+        # Area index
         index = self.app.selected_area.index
-        self.area_name_textbox.configure(text=f"{index}")
-        self.area_type_menu.configure(state="enabled")
+        self.area_index_entry.configure(state="normal")
+        self.area_index_entry.delete(first_index=0, last_index="end")
+        self.area_index_entry.configure(text_color="black")
+        self.area_index_entry.insert(index=0, string=index)
+        self.area_index_button.configure(state='normal')
+
+        # Update rate
+        update_rate = self.app.selected_area.update_rate
+        self.update_rate_entry.configure(state="normal")
+        self.update_rate_entry.delete(first_index=0, last_index="end")
+        self.update_rate_entry.configure(text_color="black")
+        self.update_rate_entry.insert(index=0, string=update_rate)
+        self.update_rate_button.configure(state='normal')
+
+        # Area type
+        self.area_type_menu.configure(state="normal")
         area_type = "Regular"
         if isinstance(self.app.selected_area, bnc.Source): area_type = "Source"
         elif isinstance(self.app.selected_area, bnc.Target): area_type = "Target"
@@ -307,27 +332,57 @@ class RightSideFrame(customtkinter.CTkFrame):
         self.set_area_type(choice=area_type)
 
     def disable(self):
-        self.right_sidebar_area_name_label.configure(text="No Area Selected")
-        self.right_sidebar_area_type_menu.configure(state="disabled")
+        # Area index
+        self.area_index_entry.configure(state='normal')
+        self.area_index_entry.delete(first_index=0, last_index='end')
+        self.area_index_entry.configure(text_color="black")
+        self.area_index_entry.configure(state='disabled')
+        self.area_index_button.configure(state='disabled')
+        
+        # Update rate
+        self.update_rate_entry.configure(state='normal')
+        self.update_rate_entry.delete(first_index=0, last_index='end')
+        self.update_rate_entry.configure(text_color="black")
+        self.update_rate_entry.configure(state='disabled')
+        self.update_rate_button.configure(state='disabled')
+
+        # Area Type
+        self.area_type_menu.configure(state="disabled")
         #self.right_sidebar_area_editor_frame.grid_forget()
 
-    def set_area_type(self, choice):
-        
-        if choice == "Source":
-            self.right_sidebar_source_editor_frame.grid(row=2, column=0, columnspan=2, padx=0, pady=0)
-            self.right_sidebar_source_dataset_frame = MNISTSequenceEditor(self.right_side_frame)
-            self.right_sidebar_source_dataset_frame.grid(row=3, column=0, columnspan=2, sticky='nsew')
-            if self.selected_area.data_loader == None:
-                dataset_type ="None" 
+    def on_area_index_change(self):
+        # Extract index
+        try:
+            index = (int)(self.area_index_entry.get())
+            old_index = self.app.selected_area.index
+            if index != old_index and index in self.app.briann.get_area_indices(): raise Exception("Index not available for area")
             else:
-                dataset_type = str(type(self.selected_area.data_loader.dataset)).split(".")[-1].replace(">","").replace("'","")
-            self.right_sidebar_source_dataset_type_menu.set(dataset_type)
-            self.set_dataset_type(choice=dataset_type)
-            
-        else:
-            self.right_sidebar_source_editor_frame.grid_forget()
+                self.app.selected_area.index = index
+                self.area_index_entry.configure(text_color="black")
+                area_button = self.app.canvas.get_area_button(label=old_index)
+                area_button.configure(text=index)
+        except:
+            self.area_index_entry.configure(text_color="red")
         
-class TargetAreaFrame(customtkinter.CTkFrame):
+    def on_update_rate_change(self):
+        # Extract update_rate
+        update_rate = (float)(self.update_rate_entry.get())
+        try:
+            self.app.selected_area.update_rate = update_rate
+        except:
+            self.update_rate_entry.configure(text_color="red")
+        
+    def set_area_type(self, choice):
+        if self.area_editor_frame != None:
+            self.area_editor_frame.grid_forget()
+        if choice == "Source":
+            pass#self.area_editor_frame = SourceAreaFrame(master=self)
+        else:
+            pass#self.area_editor_frame - TargetAndRegularAreaFrame(master=self)
+
+        #self.area_editor_frame.grid(row=3, column=0, columnspan=2, sticky='nsew')
+                
+class TargetAndRegularAreaFrame(customtkinter.CTkFrame):
 
     def __init__(self, master, *args, **kwargs):
         super().__init__(master, *args, **kwargs)
@@ -345,12 +400,21 @@ class SourceAreaFrame(customtkinter.CTkFrame):
         self.right_sidebar_source_dataset_type_menu = customtkinter.CTkOptionMenu(self.right_sidebar_source_editor_frame, values=["None","SequentialMNIST"], command=self.set_dataset_type)
         self.right_sidebar_source_dataset_type_menu.grid(row=0, column=1, padx=20, pady=10)
 
+        self.right_sidebar_source_dataset_frame = MNISTSequenceEditor(self.right_side_frame)
+        self.right_sidebar_source_dataset_frame.grid(row=3, column=0, columnspan=2, sticky='nsew')
+        if self.selected_area.data_loader == None:
+            dataset_type ="None" 
+        else:
+            dataset_type = str(type(self.selected_area.data_loader.dataset)).split(".")[-1].replace(">","").replace("'","")
+        self.right_sidebar_source_dataset_type_menu.set(dataset_type)
+        self.set_dataset_type(choice=dataset_type)
+        
+
     def set_dataset_type(self, choice):
         if choice == "SequentialMNIST":
             self.right_sidebar_source_dataset_frame = MNISTSequenceEditor(master=self.right_sidebar_source_editor_frame)
             self.right_sidebar_source_dataset_frame.grid(row=1, column=0, columnspan=2, sticky='nsew')
      
-
 class MNISTSequenceEditor(customtkinter.CTkFrame):
 
     def __init__(self, master, *args, **kwargs):
@@ -368,12 +432,20 @@ class BrIANNCanvas(tk.Canvas):
 
         self.app = app
         self.dpi = get_dpi()
-        self.area_rectangles = []
 
         self.bind("<ButtonPress-1>", self.left_mouse_press)
-        self.bind("<ButtonRelease-1>", self.left_mouse_release)
         self.bind("<B1-Motion>", self.drag_motion)
         self.bind("<MouseWheel>", self.zoom) # WINDOWS ONLY
+
+    def get_area_button(self, label: int) -> customtkinter.CTkButton:
+        
+        # Fetch
+        result = None
+        for button in self.area_buttons.values():
+            if button.cget('text') == label: result = button
+
+        # Return
+        return result
 
     def left_mouse_press(self, event):
         widget = event.widget
@@ -382,13 +454,6 @@ class BrIANNCanvas(tk.Canvas):
         widget._drag_start_x = event.x
         widget._drag_start_y = event.y
         
-    def left_mouse_release(self, event):
-        widget = event.widget
-        if widget._press_x == event.x and widget._press_y == event.y:
-            for area_rectangle in self.area_rectangles:
-                if area_rectangle["x0"] < event.x and  event.x < area_rectangle["x1"] and area_rectangle["y0"] < event.y and  event.y < area_rectangle["y1"]:
-                    print("Area selected")
-
     def drag_motion(self, event):
         widget = event.widget
         dx = event.x - widget._drag_start_x
@@ -411,14 +476,13 @@ class BrIANNCanvas(tk.Canvas):
         self.G = nx.DiGraph()
          
         # Add nodes for each area
-        for area in self.app.briann.areas.values():
+        for area in self.app.briann.areas:
             self.G.add_node(area.index, label=area.index)
         
         # Add edges for each connection
         edge_list = []
-        for from_area_index, connections in self.app.briann.connections_from.items():
-            for connection in connections:
-                edge_list.append((from_area_index, connection.to_area_index, {'label': ''}))
+        for connection in self.app.briann.connections:
+            edge_list.append((connection.from_area_index, connection.to_area_index, {'label': ''}))
         self.G.add_edges_from(edge_list)
 
     def plot(self):
@@ -426,10 +490,12 @@ class BrIANNCanvas(tk.Canvas):
         # Draw the areas
         area_positions = nx.shell_layout(self.G)
         area_size = 0.3*self.dpi
-        for i, area_position in enumerate(area_positions.values()):
+        self.area_buttons = {}
+        for i, area_position in area_positions.items():
             x0, y0 = self.cartesian_to_canvas(x=area_position[0], y=area_position[1])
-            color = 'orange' if self.app.briann.areas[i] in self.app.briann._due_areas else 'lightgray'
-            button = customtkinter.CTkButton(self, text = i, fg_color=color, border_color='lightgray', border_width=0.05*area_size, text_color='black', command = lambda i_tmp=i: self.area_click(i_tmp), anchor = tk.W, width = area_size, height=area_size, corner_radius=0.5*area_size)
+            color = 'orange' if self.app.briann.get_area_at_index(index= i) in self.app.briann._due_areas else 'lightgray'
+            button = customtkinter.CTkButton(self, text = i, fg_color=color, border_color='lightgray', border_width=0.05*area_size, text_color='black', command = lambda button_identifier=f"id{i}": self.area_click(button_identifier=button_identifier), anchor = tk.W, width = area_size, height=area_size, corner_radius=0.5*area_size)
+            self.area_buttons[f"id{i}"] = button
             self.create_window(x0, y0, anchor=tk.CENTER, window=button)
             
         # Draw the edges
@@ -472,8 +538,11 @@ class BrIANNCanvas(tk.Canvas):
             else: 
                 self.create_line(x0,y0, xmb,ymb, width=width, arrow='last'); self.create_line(xmb,ymb, x1,y1, width=width)
     
-    def area_click(self, area_index):
-        self.app.selected_area = self.app.briann.areas[area_index]
+    def area_click(self, button_identifier: str):
+        
+        button = self.area_buttons[button_identifier]
+        index = button.cget('text')
+        self.app.selected_area = self.app.briann.get_area_at_index(index=index)
 
     def cartesian_to_canvas(self, x, y):
         return x*self.dpi+0.5*self.winfo_reqwidth(), 0.5*self.winfo_reqheight()-y*self.dpi

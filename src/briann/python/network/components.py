@@ -1,7 +1,7 @@
 "This module collects all necessary components to build a BrIANN model."
 import numpy as np
 import torch
-from typing import List, Dict, Deque
+from typing import List, Dict, Deque, Set
 from queue import Queue
 import sys
 from abc import ABC, abstractmethod
@@ -24,21 +24,23 @@ class TimeFrame():
     
     def __init__(self, state: torch.Tensor, time_point: float) -> "TimeFrame":
         
-        # Set state
-        if not isinstance(state, torch.Tensor):
-            raise TypeError(f"The state must be a torch.Tensor.")
-        self._state = state
-
-        # Set 
-        if not isinstance(time_point, float):
-            raise TypeError("The time_point must be a float.")
-        self._time_point = time_point
+        # Set properties
+        self.state = state
+        self.time_point = time_point    
 
     @property
     def state(self) -> torch.Tensor:
-        """:return: The state of the time frame. This is a :py:class:`torch.tensor` without an explicit time axis, for instance of shape [instance count, dimensionality].
+        """:return: The state of the time frame. This is a :py:class:`torch.tensor`, for instance of shape [instance count, dimensionality].
         :rtype: torch.Tensor"""
         return self._state
+
+    @state.setter
+    def state(self, new_value: torch.Tensor) -> None:
+        
+        # Check input validity
+        if not isinstance(new_value, torch.Tensor):
+            raise TypeError(f"The state must be a torch.Tensor but was {type(new_value)}.")
+        self._state = new_value
 
     @property
     def time_point(self) -> float:
@@ -46,6 +48,16 @@ class TimeFrame():
         :rtype: float"""
         return self._time_point
     
+    @time_point.setter
+    def time_point(self, new_value: float) -> None:
+        
+        # Check input validity
+        if not isinstance(new_value, float):
+            raise TypeError(f"The time_point must be a float but was {type(new_value)}.")
+        
+        # Set property
+        self._time_point = new_value
+
     def __repr__(self) -> str:
         return f"TimeFrame(time_point={self.time_point}, state shape={self.state.shape})"
     
@@ -66,14 +78,12 @@ class TimeFrameAccumulator():
            
         # Set initial time frame and time frame
         if not isinstance(initial_time_frame, TimeFrame):
-            raise TypeError(f"The initial_time_frame must be a TimeFrame.")
+            raise TypeError(f"The initial_time_frame must be a TimeFrame but was {type(initial_time_frame)}.")
         self._time_frame = initial_time_frame
         self._initial_time_frame = initial_time_frame
 
         # Set decay rate
-        if not isinstance(decay_rate, float):
-            raise TypeError("The decay_rate should be a float.")
-        self._decay_rate = decay_rate
+        self.decay_rate = decay_rate
     
     @property
     def decay_rate(self) -> float:
@@ -81,6 +91,16 @@ class TimeFrameAccumulator():
         :rtype: float"""
         return self._decay_rate
         
+    @decay_rate.setter
+    def decay_rate(self, new_value: float) -> None:
+
+        # Check input validity
+        if not isinstance(new_value, float):
+            raise TypeError(f"The decay_rate should be a float but was {type(new_value)}.")
+        
+        # Set property
+        self._decay_rate = new_value
+
     def accumulate(self, time_frame: TimeFrame) -> None:
         """Sets the :py:meth:`~.TimeFrame.state` of the :py:meth:`~.TimeFrameAccumulator.time_frame` of self equal to the weighted sum of 
         the state of the new `time_frame` and the state the current time frame of self. The weight for the old state is 
@@ -127,14 +147,14 @@ class TimeFrameAccumulator():
         :type initial_time_frame: TimeFrame, optional, defaults to None.
         """
 
-        if initial_time_frame == None:
+        if initial_time_frame != None:
             # Set initial time frame and time frame
             if not isinstance(initial_time_frame, TimeFrame):
-                raise TypeError(f"The initial_time_frame must be a TimeFrame.")
+                raise TypeError(f"The initial_time_frame must be a TimeFrame but was {type(initial_time_frame)}.")
             self._time_frame = initial_time_frame
             self._initial_time_frame = initial_time_frame
         else:
-            self._time_frame = initial_time_frame
+            self._time_frame = self._initial_time_frame
 
     def __repr(self) -> str:
         return f"TimeFrameAccumulator(decay_rate={self.decay_rate})"
@@ -159,30 +179,12 @@ class Connection(torch.nn.Module):
         # Call the parent constructor
         super().__init__()
 
-        # Set index
-        if not (isinstance(index, int) or isinstance(index, str)):
-            raise TypeError("The index must be an int.")
-        self._index = index
-
-        # Set input area index
-        if not isinstance(from_area_index, int):
-            raise TypeError("The from_area_index must be an int.")
-        self._from_area_index = from_area_index
-
-        # Set output area index
-        if not isinstance(to_area_index, int):
-            raise TypeError("The to_area_index must be an int.")
-        self._to_area_index = to_area_index
-
-        # Set input time time accumulator
-        if not isinstance(input_time_frame_accumulator, TimeFrameAccumulator):
-            raise TypeError("The input_time_frame_accumulator must be a TimeFrameAccumulator.")
-        self._input_time_frame_accumulator = input_time_frame_accumulator
-
-        # Set transformation
-        if not isinstance(transformation, torch.nn.Module):
-            raise TypeError("Transformation must be a torch.nn.Module object.")
-        self._transformation = transformation
+        # Set Properties        
+        self.index = index # Must be set first
+        self.from_area_index = from_area_index
+        self.to_area_index = to_area_index
+        self.input_time_frame_accumulator = input_time_frame_accumulator
+        self.transformation = transformation
 
     @property
     def index(self) -> int:
@@ -190,6 +192,16 @@ class Connection(torch.nn.Module):
         :rtype: int"""
         return self._index
     
+    @index.setter
+    def index(self, new_value: int) -> None:
+
+        # Check input validity
+        if not (isinstance(new_value, int)):
+            raise TypeError(f"The index of Connection {self.index} must be an int but was {type(new_value)}.")
+        
+        # Set property
+        self._index = new_value
+
     @property
     def from_area_index(self) -> int:
         """:return: The index of the area that is the source of the connection.
@@ -197,6 +209,16 @@ class Connection(torch.nn.Module):
         """
         return self._from_area_index
     
+    @from_area_index.setter
+    def from_area_index(self, new_value: int) -> None:
+        
+        # Check input validity
+        if not isinstance(new_value, int):
+            raise TypeError(f"The from_area_index of Connection {self.index} must be an int but was {type(new_value)}.")
+        
+        # Set property
+        self._from_area_index = new_value
+
     @property
     def to_area_index(self) -> int:
         """:return: The index of the area that is the target of the connection.
@@ -204,12 +226,32 @@ class Connection(torch.nn.Module):
         """
         return self._to_area_index
     
+    @to_area_index.setter
+    def to_area_index(self, new_value: int) -> None:
+        
+        # Check input validity
+        if not isinstance(new_value, int):
+            raise TypeError(f"The to_area_index of Connection {self.index} must be an int but was {type(new_value)}.")
+        
+        # Set property
+        self._to_area_index = new_value
+
     @property
     def input_time_frame_accumulator(self) -> TimeFrameAccumulator:
         """:return: The time frame accumulator that stores the input of the connection.
         :rtype: :py:class:`.TimeFrameAccumulator`
         """
         return self._input_time_frame_accumulator
+
+    @input_time_frame_accumulator.setter
+    def input_time_frame_accumulator(self, new_value: TimeFrameAccumulator) -> None:
+        
+        # Check input validity
+        if not isinstance(new_value, TimeFrameAccumulator):
+            raise TypeError(f"The input_time_frame_accumulator of Connection {self.index} must be a TimeFrameAccumulator but was {type(new_value)}.")
+        
+        # Set property
+        self._input_time_frame_accumulator = new_value
 
     @property
     def transformation(self) -> torch.nn.Module:
@@ -218,6 +260,16 @@ class Connection(torch.nn.Module):
         """
         return self._transformation
         
+    @transformation.setter
+    def transformation(self, new_value: torch.nn.Module) -> None:
+
+        # Check input validity
+        if not isinstance(new_value, torch.nn.Module):
+            raise TypeError(f"Transformation of Connection {self.index} must be a torch.nn.Module object but was {type(new_value)}.")
+        
+        # Set property
+        self._transformation = new_value
+
     def forward(self, current_time: float) -> TimeFrame:
         """Reads the current state of the :py:meth:`.Connection.time_frame_accumulator` and applies the :py:meth:`~.Connection.transformation` to it. 
 
@@ -286,63 +338,64 @@ class Area(torch.nn.Module):
         # Call the parent constructor
         super().__init__()
         
-        # Set index
-        if not (isinstance(index, int) or isinstance(index, str)):
-            raise TypeError("The index must be an int.")
-        self._index = index
-        
-        # Set time frame accumulator
-        if not isinstance(output_time_frame_accumulator, TimeFrameAccumulator):
-            raise TypeError(f"The time_frame_accumulator of area {index} must be a TimeFrameAccumulator.")
-        self._output_time_frame_accumulator = output_time_frame_accumulator
-        
-        # Input connections
-        if not isinstance(input_connections, List):
-            raise TypeError(f"The input_connections for area {index} must be a list of :py:class:`.Connection` objects projecting to area {index}.")
-        if not all(isinstance(connection, Connection) for connection in input_connections):
-            raise TypeError(f"All values in the input_connections list of area {index} must be Connection objects projecting to area {index}.")
-        self._input_connections = input_connections
-            
-        # Output connections
-        if not isinstance(output_connections, List):
-            raise TypeError(f"The output_connections for area {index} must be a list of :py:class:`.Connection` objects projecting from area {index}.")
-        if not all(isinstance(connection, Connection) for connection in output_connections):
-            raise TypeError(f"All values in the output_connections list of area {index} must be Connection objects projecting from area {index}.")
-        self._output_connections = output_connections
-            
-        # Set transformation
-        if not isinstance(transformation, torch.nn.Module):
-            raise TypeError(f"The transformation of area {index} must be a torch.nn.Module object.")
-        self._transformation = transformation
-
-        # Set update rate
-        if not isinstance(update_rate, float):
-            raise TypeError(f"The update_rate of area {index} has to be a float.")
-        if not update_rate >= 0:
-            raise ValueError(f"The update_rate of area {index} has to be non-negative.")
-        self._update_rate = update_rate
-
-        # Set update counter
+        # Set properties
+        self.index = index # Must be set first
+        self.output_time_frame_accumulator = output_time_frame_accumulator
+        self.input_connections = input_connections
+        self.output_connections = output_connections
+        self.transformation = transformation
+        self.update_rate = update_rate
         self._update_count = 0 
-
-        # Set state merge strategy
-        if state_merge_strategy != None:
-            if not isinstance(state_merge_strategy, StateMergeStrategy):
-                raise TypeError(f"The state_merge_strategy was expected to be of type StateMergeStrategy but was found to be {type(state_merge_strategy)}.")
-        self._state_merge_strategy = state_merge_strategy
-
+        self.state_merge_strategy = state_merge_strategy
 
     @property
     def index(self) -> int:
         """:return: The index of the area used to identify it in the overall model.
         :rtype: int"""
         return self._index
+    
+    @index.setter
+    def index(self, new_value: int) -> None:
+        
+        # Check input validity
+        if not isinstance(new_value, int):
+            raise TypeError("The index must be an int.")
+        if not new_value >= 0:
+            raise ValueError("The index must be non-negative.")
+        
+        # Set property
+        self._index = new_value
+
+        # Adjust input connections
+        if hasattr(self, "_input_connections"):
+            for connection in self.input_connections:
+                connection.to_area_index = new_value
+
+        # Adjust output connections
+        if hasattr(self, "_output_connections"):
+            for connection in self.output_connections:
+                connection.from_area_index = new_value
 
     @property
     def output_time_frame_accumulator(self) -> TimeFrameAccumulator:
         """:return: The time frame accumulator of this area.
         :rtype: :py:class:`.TimeFrameAccumulator`"""
         return self._output_time_frame_accumulator
+
+    @output_time_frame_accumulator.setter
+    def output_time_frame_accumulator(self, new_value: TimeFrameAccumulator) -> None:
+        
+        # Check input validity
+        if not isinstance(new_value, TimeFrameAccumulator):
+            raise TypeError(f"The time_frame_accumulator must be a TimeFrameAccumulator.")
+        
+        # Set property
+        self._output_time_frame_accumulator = new_value
+
+        # Update output connections
+        if hasattr(self, "_output_connections"):
+            for connection in self.output_connections:
+                connection.input_time_frame_accumulator = new_value
 
     @property
     def input_connections(self) -> List[Connection]:
@@ -351,6 +404,17 @@ class Area(torch.nn.Module):
         """
         return self._input_connections
 
+    @input_connections.setter
+    def input_connections(self, new_value: List[Connection]) -> None:
+        # Check input validity
+        if not isinstance(new_value, List):
+            raise TypeError(f"The input_connections for area {self.index} must be a list of :py:class:`.Connection` objects projecting to area {self.index}.")
+        if not all(isinstance(connection, Connection) for connection in new_value):
+            raise TypeError(f"All values in the input_connections list of area {self.index} must be Connection objects projecting to area {self.index}.")
+        
+        # Set property
+        self._input_connections = new_value 
+
     @property
     def output_connections(self) -> List[Connection]:
         """:return: A list of :py:class:`.Connection` objects projecting from this area. 
@@ -358,18 +422,52 @@ class Area(torch.nn.Module):
         """
         return self._output_connections
 
+    @output_connections.setter
+    def output_connections(self, new_value: List[Connection]) -> None:
+
+        # Check input validity
+        if not isinstance(new_value, List):
+            raise TypeError(f"The output_connections for area {self.index} must be a list of :py:class:`.Connection` objects projecting from area {self.index}.")
+        if not all(isinstance(connection, Connection) for connection in new_value):
+            raise TypeError(f"All values in the output_connections list of area {self.index} must be Connection objects projecting from area {self.index}.")
+        
+        # Set property
+        self._output_connections = new_value
+
     @property
     def transformation(self) -> torch.nn.Module:
         """:return: The transformation of this area. This should be a torch.nn.Module whose forward method accepts a torch.Tensor or a list of torch.Tensors, depending on the chosen :py:meth:`~.Area.state_merge_strategy`.
         :rtype: torch.nn.Module"""
         return self._transformation
     
+    @transformation.setter
+    def transformation(self, new_value: torch.nn.Module) -> None:
+
+        # Check input validity
+        if not isinstance(new_value, torch.nn.Module):
+            raise TypeError(f"The transformation of area {self.index} must be a torch.nn.Module object.")
+        
+        # Set property
+        self._transformation = new_value
+
     @property
     def update_rate(self) -> float:
         """:return: The update-rate of this area.
         :rtype: float"""
         return self._update_rate
     
+    @update_rate.setter
+    def update_rate(self, new_value: float) -> None:
+
+        # Check input validity
+        if not isinstance(new_value, float):
+            raise TypeError(f"The update_rate of area {self.index} has to be a float.")
+        if not new_value >= 0:
+            raise ValueError(f"The update_rate of area {self.index} has to be non-negative.")
+        
+        # Set property
+        self._update_rate = new_value
+
     @property
     def update_count(self) -> int:
         """:return: Counts how many times this area was updated during the simulation.
@@ -381,6 +479,17 @@ class Area(torch.nn.Module):
         """:return: The state merge strategy of this area.
         :rtype: :py:class:`.StateMergeStrategy`"""
         return self._state_merge_strategy
+
+    @state_merge_strategy.setter
+    def state_merge_strategy(self, new_value: StateMergeStrategy) -> None:
+        
+        # Ensure input validity
+        if new_value != None:
+            if not isinstance(new_value, StateMergeStrategy):
+                raise TypeError(f"The state_merge_strategy was expected to be of type StateMergeStrategy but was found to be {type(new_value)}.")
+
+        # Set property
+        self._state_merge_strategy = new_value
 
     def forward(self) -> None:
         """Calls the :py:meth:`~.Connection.forward` method of all incoming connections to get the current input, then passes that through
@@ -646,18 +755,45 @@ class BrIANN(torch.nn.Module):
         # Set next areas 
         self._due_areas = []
 
-        # Set the flag to indicate that all states are reset
-        self._all_areas_reset = False
-
     @property
-    def areas(self) -> List[Area]:
-        """A dictionary where each key is the index of an area and each value is the corresponding :py:class:`.Area`.
-        
-        :return: The areas of the model.
-        :rtype: Dict[int, :py:class:`.Area`]
+    def areas(self) -> Set[Area]:
+        """The set of areas held by self.
+
+        :return: The set of areas held by self.
+        :rtype: Set[:py:class:`.Area`]
         """
+
         return self._areas
 
+    def get_area_indices(self) -> List[int]:
+        """Returns the list of indices of the areas stored internally.
+
+        :return: The list of indices.
+        :rtype: List[int]
+        """
+        return [area.index for area in self._areas]
+    
+    def get_area_at_index(self, index: int) -> Area:
+        """Returns the area with given `index`.
+
+        :return: The area with given `index`.
+        :rtype: :py:class:`.Area`
+        :raises ValueError: If self does not store an area of given `index`
+        """
+        
+        # Check input validity
+        if not isinstance(index, int): raise TypeError(f"The area index was expected to be of type int but was {type(index)}.")
+        if not index in self.get_area_indices(): raise ValueError(f"This BrIANN object does not hold an area with index {index}.")
+        
+        # Collect
+        result = None
+        for area in self._areas:
+            if area.index == index: result = area
+
+        # Output
+        return result
+
+        
     @property
     def connections(self) -> Dict[int, Connection]:
         """A dictionary where each key is an area index and each value is a :py:class:`.Connection`.
@@ -667,23 +803,41 @@ class BrIANN(torch.nn.Module):
         """
         return self._connections
     
-    @property
-    def connections_from(self) -> Dict[int, List[Connection]]:
-        """A dictionary where each key is an area index and each value is a list of :py:class:`.Connection` objects that are the output connections of the area with the given index. This is used to access the output connections of the areas of the model.
+    def connections_from(self, area_index: int) -> List[Connection]:
+        """A list of :py:class:`.Connection` objects that are the output connections of the area with the given index. 
         
-        :return: The output connections of the areas of the model.
-        :rtype: Dict[int, List[:py:class:`.Connection`]]
+        :return: The list of output connections.
+        :rtype: List[:py:class:`.Connection`]
         """
-        return self._connections_from
+
+        # Compile
+        result = [None] * len(self._connections)
+        i = 0
+        for connection in self._connections:
+            if connection.from_area_index == area_index: 
+                result[i] = connection
+                i += 1
+
+        # Output
+        return result[:i]
         
-    @property
-    def connections_to(self) -> Dict[int, List[Connection]]:
-        """A dictionary where each key is an area index and each value is a list of :py:class:`.Connection` objects that are the input connections of the area with the given index. This is used to access the input connections of the areas of the model.
+    def connections_to(self, area_index: int) -> List[Connection]:
+        """A list of :py:class:`.Connection` objects that are the input connections to the area with the given index. 
         
-        :return: The input connections of the areas of the model.
-        :rtype: Dict[int, List[:py:class:`.Connection`]]
+        :return: The selistt of input connections.
+        :rtype: List[:py:class:`.Connection`]
         """
-        return self._connections_to
+
+        # Compile
+        result = [None] * len(self._connections)
+        i = 0
+        for connection in self._connections:
+            if connection.to_area_index == area_index: 
+                result[i] = connection
+                i += 1
+
+        # Output
+        return result[:i]
     
     @property
     def current_simulation_time(self) -> float:
@@ -754,9 +908,7 @@ class BrIANN(torch.nn.Module):
             time_frame_accumulators[index] = time_frame_accumulator
 
         # Set connections
-        self._connections = {}
-        self._connections_from = {}
-        self._connections_to = {}
+        self._connections = set([])
 
         for connection_configuration in configuration["connections"]:
             # Extract configuration
@@ -769,24 +921,18 @@ class BrIANN(torch.nn.Module):
             connection = Connection(index=index, from_area_index=from_area_index, to_area_index=to_area_index, input_time_frame_accumulator=time_frame_accumulator, transformation=transformation)
             
             # Insert the connection to the arrays
-            self._connections[index] = connection
-            if to_area_index not in self._connections_to.keys(): self._connections_to[to_area_index] = [connection]
-            else: self._connections_to[to_area_index].append(connection)
-
-            if from_area_index not in self._connections_from.keys(): self._connections_from[from_area_index] = [connection]
-            else: self._connections_from[from_area_index].append(connection)
-
+            self._connections.add(connection)
+            
         # Set areas
-        self._areas = {}
-        self._source_areas = set([])
-        self._target_areas = set([])
+        self._areas = set([])
         for area_configuration in configuration["areas"]:
             
             # Enrich configuration
             area_index = area_configuration["index"]
-            if area_index in self._connections_to.keys(): area_configuration["input_connections"] = self._connections_to[area_index]
+
+            if area_configuration["type"] != "Source": area_configuration["input_connections"] = self.connections_to(area_index=area_index)
             area_configuration["output_time_frame_accumulator"] = time_frame_accumulators[area_index]
-            if area_index in self._connections_from.keys(): area_configuration["output_connections"] = self._connections_from[area_index]
+            if area_configuration["type"] != "Target": area_configuration["output_connections"] = self.connections_from(area_index=area_index)
 
             if "hold_function" in area_configuration.keys(): 
                 global hold_function
@@ -825,11 +971,8 @@ class BrIANN(torch.nn.Module):
             exec("global area, tmp; area = " + area_type + "(**tmp)")
 
             # Store
-            self._areas[area_index] = area
-            if isinstance(area, Source): self._source_areas.add(area)
-
-            elif isinstance(area, Target): self._target_areas.add(area)
-
+            self._areas.add(area)
+            
         # Set flag to indicate that all states are reset
         self._all_areas_reset = True
 
