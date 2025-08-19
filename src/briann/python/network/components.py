@@ -61,7 +61,7 @@ class TimeFrame():
 
     def __repr__(self) -> str:
         return f"TimeFrame(time_point={self.time_point}, state shape={self.state.shape})"
-    
+"""
 class TimeFrameInitializer():
 
     def __init__(self, shape: List[int]) -> "TimeFrameInitializer":
@@ -92,7 +92,7 @@ class RandomUniformTimeFrameInitializer(RandomTimeFrameInitializer):
         while True:
             yield torch.rand(size=self.shape, )
 
-
+"""
 
 
 class TimeFrameAccumulator():

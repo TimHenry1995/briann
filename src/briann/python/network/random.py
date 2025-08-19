@@ -1,5 +1,5 @@
 from typing import List, Iterator
-#from torch.utils.data import Sampler
+from torch.utils.data import Sampler
 import numpy as np
 
 class Random():
@@ -42,7 +42,7 @@ class Random():
             indices[j] = indices[i]
             indices[i] = tmp
 
-class IndexSampler():#Sampler[int]):
+class IndexSampler(Sampler[int]):
 
     def __init__(self, instance_count: int, seed: int = None) -> None:
         self._instance_count = instance_count
