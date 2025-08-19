@@ -100,7 +100,7 @@
     "datasets":
     [
         {
-            "type": "SequentialMNIST",
+            "type": "PenStrokeMNIST",
             "index": 0,
             "folder_path": "C:/Users/P70057764/Downloads/preprocessed mnist seq/sequences",
             "portion": "test",

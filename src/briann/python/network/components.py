@@ -1,7 +1,7 @@
 "This module collects all necessary components to build a BrIANN model."
 import numpy as np
 import torch
-from typing import List, Dict, Deque, Set
+from typing import List, Dict, Deque, Set, Generator
 from queue import Queue
 import sys
 from abc import ABC, abstractmethod
@@ -49,9 +49,10 @@ class TimeFrame():
         return self._time_point
     
     @time_point.setter
-    def time_point(self, new_value: float) -> None:
+    def time_point(self, new_value: float | int) -> None:
         
         # Check input validity
+        if isinstance(new_value, int): new_value = (float)(new_value)
         if not isinstance(new_value, float):
             raise TypeError(f"The time_point must be a float but was {type(new_value)}.")
         
@@ -61,6 +62,39 @@ class TimeFrame():
     def __repr__(self) -> str:
         return f"TimeFrame(time_point={self.time_point}, state shape={self.state.shape})"
     
+class TimeFrameInitializer():
+
+    def __init__(self, shape: List[int]) -> "TimeFrameInitializer":
+        self.shape = shape
+
+class ZerosTimeFrameInitializer(TimeFrameInitializer):
+
+    def __init__(self, shape: List[int]) -> "ZerosTimeFrameInitializer":
+        super().__init__(shape=shape)
+
+    def generator(self) -> Generator[torch.Tensor]:
+        while True:
+            yield torch.zeros(size=self.shape)
+
+
+class RandomUniformTimeFrameInitializer(RandomTimeFrameInitializer):
+
+    def __init__(self, shape: List[int], lower_bound: float, upper_bound: float) -> "ZerosTimeFrameInitializer":
+        super().__init__(shape=shape)
+
+        self.lower_bound = lower_bound
+        self.upper_bound = upper_bound
+
+    def _random_number_generator(self):
+        pass
+
+    def generator(self) -> Generator[torch.Tensor]:
+        while True:
+            yield torch.rand(size=self.shape, )
+
+
+
+
 class TimeFrameAccumulator():
     """
     This class is used to accumulate :py:class:`.TimeFrame` objects. Accumulation happens by merging new time frames into the accumulator's
@@ -462,8 +496,8 @@ class Area(torch.nn.Module):
         # Check input validity
         if not isinstance(new_value, float):
             raise TypeError(f"The update_rate of area {self.index} has to be a float.")
-        if not new_value >= 0:
-            raise ValueError(f"The update_rate of area {self.index} has to be non-negative.")
+        if not new_value > 0:
+            raise ValueError(f"The update_rate of area {self.index} has to be positive.")
         
         # Set property
         self._update_rate = new_value

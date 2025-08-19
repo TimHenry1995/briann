@@ -16,7 +16,7 @@ from customtkinter import filedialog
 import tkinter as tk
 from typing import List
 from CTkMenuBar import *
-import json
+import json, torch
 
 def get_dpi():
     # Create a hidden root window
@@ -280,23 +280,21 @@ class RightSideFrame(customtkinter.CTkFrame):
         self.app = app
 
         # Area Index
-        self.area_index_label = customtkinter.CTkLabel(master=self, text="Area Index", anchor='w')
-        self.area_index_label.grid(row=0, column=0, padx=(20,5), pady=10, stick='ew')
+        customtkinter.CTkLabel(master=self, text="Area Index", anchor='w').grid(row=0, column=0, padx=(20,5), pady=10, sticky='ew')
         self.area_index_entry = customtkinter.CTkEntry(master=self, width=0.5*app.dpi, height=0.25*app.dpi, state='disabled')
-        self.area_index_entry.grid(row=0, column=1, padx=5, pady=10, stick='ew')
+        self.area_index_entry.grid(row=0, column=1, padx=5, pady=10, sticky='ew')
         self.area_index_button = customtkinter.CTkButton(master=self, width=0.5*app.dpi, height=0.25*app.dpi, text='Set', state='disabled', command=self.on_area_index_change)
-        self.area_index_button.grid(row=0, column=2, padx=(5,20), pady=10, stick='ew')
+        self.area_index_button.grid(row=0, column=2, padx=(5,20), pady=10, sticky='ew')
         
         # Update Rate
-        self.update_rate_label = customtkinter.CTkLabel(master=self, text="Update Rate:", anchor='w')
-        self.update_rate_label.grid(row=1, column=0, padx=(20,5), pady=10, stick='ew')
+        customtkinter.CTkLabel(master=self, text="Update Rate:", anchor='w').grid(row=1, column=0, padx=(20,5), pady=10, sticky='ew')
         self.update_rate_entry = customtkinter.CTkEntry(master=self, width=0.5*app.dpi, height=0.25*app.dpi, state='disabled')
-        self.update_rate_entry.grid(row=1, column=1, padx=5, pady=10, stick='ew')
+        self.update_rate_entry.grid(row=1, column=1, padx=5, pady=10, sticky='ew')
         self.update_rate_button = customtkinter.CTkButton(master=self, width=0.5*app.dpi, height=0.25*app.dpi, text='Set', state='disabled', command=self.on_update_rate_change)
-        self.update_rate_button.grid(row=1, column=2, padx=(5,20), pady=10, stick='ew')
+        self.update_rate_button.grid(row=1, column=2, padx=(5,20), pady=10, sticky='ew')
         
         # Area Type
-        customtkinter.CTkLabel(master=self, text="Area Type:", anchor='w').grid(row=2, column=0, padx=(20,5), pady=10)
+        customtkinter.CTkLabel(master=self, text="Area Type:", anchor='w').grid(row=2, column=0, padx=(20,5), pady=10, sticky='ew')
         self.area_type_menu = customtkinter.CTkOptionMenu(master=self, values=["Source", "Regular", "Target"], command=self.set_area_type, state='disabled')
         self.area_type_menu.set("Regular")
         self.area_type_menu.grid(row=2, column=1, columnspan=2, padx=(5,20), pady=10)
@@ -331,7 +329,7 @@ class RightSideFrame(customtkinter.CTkFrame):
         self.area_type_menu.set(area_type)
         self.set_area_type(choice=area_type)
 
-    def disable(self):
+    def disable(self) -> None:
         # Area index
         self.area_index_entry.configure(state='normal')
         self.area_index_entry.delete(first_index=0, last_index='end')
@@ -348,9 +346,9 @@ class RightSideFrame(customtkinter.CTkFrame):
 
         # Area Type
         self.area_type_menu.configure(state="disabled")
-        #self.right_sidebar_area_editor_frame.grid_forget()
+        if self.area_editor_frame != None: self.area_editor_frame.grid_forget()
 
-    def on_area_index_change(self):
+    def on_area_index_change(self) -> None:
         # Extract index
         try:
             index = (int)(self.area_index_entry.get())
@@ -364,66 +362,156 @@ class RightSideFrame(customtkinter.CTkFrame):
         except:
             self.area_index_entry.configure(text_color="red")
         
-    def on_update_rate_change(self):
+    def on_update_rate_change(self) -> None:
         # Extract update_rate
         update_rate = (float)(self.update_rate_entry.get())
         try:
             self.app.selected_area.update_rate = update_rate
+            self.update_rate_entry.configure(text_color="black")
         except:
             self.update_rate_entry.configure(text_color="red")
         
-    def set_area_type(self, choice):
+    def set_area_type(self, choice: None) -> None:
+        # Clear current frame 
         if self.area_editor_frame != None:
             self.area_editor_frame.grid_forget()
+        
+        # Replace with new frame
         if choice == "Source":
-            pass#self.area_editor_frame = SourceAreaFrame(master=self)
+            self.area_editor_frame = SourceAreaFrame(master=self, app=self.app)
         else:
-            pass#self.area_editor_frame - TargetAndRegularAreaFrame(master=self)
+            self.area_editor_frame = TargetAndRegularAreaFrame(master=self, app=self.app)
 
-        #self.area_editor_frame.grid(row=3, column=0, columnspan=2, sticky='nsew')
+        self.area_editor_frame.grid(row=3, column=0, columnspan=3, padx=(20,20), pady=10, sticky='ew')
                 
 class TargetAndRegularAreaFrame(customtkinter.CTkFrame):
 
-    def __init__(self, master, *args, **kwargs):
-        super().__init__(master, *args, **kwargs)
+    def __init__(self, master, app, *args, **kwargs):
+        super().__init__(master, *args, **kwargs, fg_color='transparent')
+        self.app = app
+        """
         # Initial state
+        customtkinter.CTkLabel(master=self, text='State Initializer:', anchor='w').grid(row=0, column=0, padx=(10,5), pady=10, sticky='ew')
+        self.state_inita_menu = customtkinter.CTkOptionMenu(master=self, values=["Zeros","Uniform","Gaussian"], command=self.set_state_initializer, state='normal')
+        self.dataset_type_menu.set("Zeros")
+        self.set_state_initializer(choice='Zeros')
+        self.dataset_type_menu.grid(row=0, column=1, padx=(5,10), pady=10, sticky='ew')
+
+        # Transformation editor frame
+        customtkinter.CTkLabel(master=self, text='State Initializer:', anchor='w').grid(row=0, column=0, padx=(10,5), pady=10, sticky='ew')
+        self.dataset_type_menu = customtkinter.CTkOptionMenu(master=self, values=["Zeros","Uniform","Gaussian"], command=self.set_state_initializer, state='normal')
+        self.dataset_type_menu.set("Zeros")
+        self.set_state_initializer(choice='Zeros')
+        self.dataset_type_menu.grid(row=0, column=1, padx=(5,10), pady=10, sticky='ew')
+
+        self.transformation_editor_frame = None
+
+        # Layout
+        self.grid_columnconfigure(0, weight=0) # Low priority to take up available space
+        self.grid_columnconfigure(1, weight=1) # High priority to take up available space
         
+    def set_state_initializer(self) -> None:
+        # Extract initial state
+        self.state_initializer_textbox.configure(text_color='black')
+        text = self.state_initializer_textbox.get(index1='0.0', index2='end').replace('\n','')
+        try:
+            global initial_state
+            exec("global initial_state; initial_state = " + text)
+            
+            if not isinstance(initial_state, torch.Tensor):
+                raise TypeError(f"Expected initial_state to be a torch.Tensor, but received {type(initial_state)}.")
+            
+            # Create copies for all instances of a batch
+            batch_size = self.app.briann.batch_size
+            initial_state = torch.concatenate([initial_state[torch.newaxis, :] for _ in range(batch_size)], dim=0)
+
+            # Set
+            self.app.selected_area.output_time_frame_accumulator.time_frame = bnc.TimeFrame(state=initial_state, time_point=0.0)
+        except:
+            text = self.state_initializer_textbox.configure(text_color='red')
+
+    def set_transformation_initializer(self) -> None:
+        print(self.transformation_initializer.get(index1='0.0', index2='end'))
+"""
+
 class SourceAreaFrame(customtkinter.CTkFrame):
 
-    def __init__(self, master, *args, **kwargs):
+    def __init__(self, master, app, *args, **kwargs):
         super().__init__(master, *args, **kwargs)
+        self.app = app
+
         # Dataset type
-        # Dataset frame
-        
-        self.right_sidebar_source_editor_frame = customtkinter.CTkFrame(self.right_sidebar_frame)
-        customtkinter.CTkLabel(self.right_sidebar_source_editor_frame, text="Dataset Type:").grid(row=0, column=0, padx=20, pady=10)
-        self.right_sidebar_source_dataset_type_menu = customtkinter.CTkOptionMenu(self.right_sidebar_source_editor_frame, values=["None","SequentialMNIST"], command=self.set_dataset_type)
-        self.right_sidebar_source_dataset_type_menu.grid(row=0, column=1, padx=20, pady=10)
+        customtkinter.CTkLabel(master=self, text='Dataset:', anchor='center').grid(row=0, column=0, columnspan=2, padx=(10,10), pady=10, sticky='ew')
+        customtkinter.CTkLabel(master=self, text='Type:', anchor='w').grid(row=1, column=0, padx=(10,5), pady=10, sticky='ew')
+        self.dataset_type_menu = customtkinter.CTkOptionMenu(master=self, values=["Pen Stroke MNIST"], command=self.set_dataset_type, state='normal')
+        self.dataset_type_menu.set("Pen Stroke MNIST")
+        self.set_dataset_type(choice='Pen Stroke MNIST')
+        self.dataset_type_menu.grid(row=1, column=1, padx=(5,10), pady=10, sticky='ew')
 
-        self.right_sidebar_source_dataset_frame = MNISTSequenceEditor(self.right_side_frame)
-        self.right_sidebar_source_dataset_frame.grid(row=3, column=0, columnspan=2, sticky='nsew')
-        if self.selected_area.data_loader == None:
-            dataset_type ="None" 
-        else:
-            dataset_type = str(type(self.selected_area.data_loader.dataset)).split(".")[-1].replace(">","").replace("'","")
-        self.right_sidebar_source_dataset_type_menu.set(dataset_type)
-        self.set_dataset_type(choice=dataset_type)
-        
+        # Dataset editor frame
+        self.data_set_editor_frame = None
 
-    def set_dataset_type(self, choice):
-        if choice == "SequentialMNIST":
-            self.right_sidebar_source_dataset_frame = MNISTSequenceEditor(master=self.right_sidebar_source_editor_frame)
-            self.right_sidebar_source_dataset_frame.grid(row=1, column=0, columnspan=2, sticky='nsew')
+        # Layout
+        self.grid_columnconfigure(0, weight=0) # Low priority to take up available space
+        self.grid_columnconfigure(1, weight=1) # High priority to take up available space
+        
+    def set_dataset_type(self, choice: str) -> None:
+        if choice == "Pen Stroke MNIST":
+            self.dataset_editor_frame = MNISTSequenceEditor(master=self, app=self.app, fg_color='transparent')
+            self.dataset_editor_frame.grid(row=2, column=0, columnspan=2, padx=(0,0), pady=0, sticky='nsew')
      
 class MNISTSequenceEditor(customtkinter.CTkFrame):
 
-    def __init__(self, master, *args, **kwargs):
+    def __init__(self, master, app, *args, **kwargs):
         super().__init__(master, *args, **kwargs)
-        customtkinter.CTkLabel(master, text="Data Folder").grid(row=1, column=0, padx=0, pady=0)
-        customtkinter.CTkButton(master, text="Choose Path", command=self.load_data).grid(row=1, column=1, padx=0, pady=0)
+        self.app = app
 
-    def load_data(self):
-        file_path = filedialog.askopenfilename()
+        # Data folder
+        customtkinter.CTkLabel(master=self, text="Folder:", anchor='w').grid(row=0, column=0, padx=(10,5), pady=10, sticky='ew')
+        path = app.selected_area.data_loader.dataset.folder_path
+        if len(path) > 23: path = '...' + path[-20:]
+        self.data_folder_label = customtkinter.CTkLabel(master=self, text=path, anchor='w')
+        self.data_folder_label.grid(row=0, column=1, padx=(5,10), pady=10, sticky='ew')
+        customtkinter.CTkButton(master=self, text="Choose", command=self.choose_data_folder).grid(row=1, column=1, padx=(0,10), pady=10, sticky='ew')
+
+        # Portion
+        customtkinter.CTkLabel(master=self, text="Portion:", anchor='w').grid(row=2, column=0, padx=(10,5), pady=10, sticky='ew')
+        self.portion_menu = customtkinter.CTkOptionMenu(master=self, values=["Train","Test","Both"], command=self.on_portion_change, state='normal')
+        self.portion_menu.set("Test")
+        self.on_portion_change(choice='Test')
+        self.portion_menu.grid(row=2, column=1, padx=(0,10), pady=10, sticky='ew')
+
+        # Padding
+        customtkinter.CTkLabel(master=self, text="Padding:", anchor='w').grid(row=3, column=0, padx=(10,5), pady=10, sticky='ew')
+        self.portion_menu = customtkinter.CTkOptionMenu(master=self, values=["Pre","Post"], command=self.on_padding_change, state='normal')
+        self.portion_menu.set("Post")
+        self.on_padding_change(choice='Post')
+        self.portion_menu.grid(row=3, column=1, padx=(0,10), pady=10, sticky='ew')
+
+        # Layout
+        self.grid_columnconfigure(0, weight=0) # Low priority to take up available space
+        self.grid_columnconfigure(1, weight=1) # High priority to take up available space
+        
+    def choose_data_folder(self) -> None:
+        # Extract folder path
+        path = filedialog.askdirectory()
+        if path != '': # If user did not cancel path dialogue
+            # Update path label
+            if len(path) > 23: self.data_folder_label.configure(text='...' + path[-20:])
+            else: self.data_folder_label.configure(text=path)
+            
+            # Try to set path variable
+            try:
+                self.app.selected_area.data_loader.dataset.folder_path = path
+                self.data_folder_label.configure(text_color='black')
+            except:
+                self.data_folder_label.configure(text_color='red')
+
+    def on_portion_change(self, choice: str) -> None:
+        self.app.selected_area.data_loader.dataset.portion = choice
+
+    def on_padding_change(self, choice: str) -> None:
+        self.app.selected_area.data_loader.dataset.padding = choice
 
 class BrIANNCanvas(tk.Canvas):
 
@@ -476,13 +564,18 @@ class BrIANNCanvas(tk.Canvas):
         self.G = nx.DiGraph()
          
         # Add nodes for each area
-        for area in self.app.briann.areas:
-            self.G.add_node(area.index, label=area.index)
+        area_indices = sorted(list(self.app.briann.get_area_indices()))
+        for area_index in area_indices:
+            area = self.app.briann.get_area_at_index(index=area_index)
+            self.G.add_node(area, label=area_index)
         
         # Add edges for each connection
         edge_list = []
         for connection in self.app.briann.connections:
-            edge_list.append((connection.from_area_index, connection.to_area_index, {'label': ''}))
+            from_area = self.app.briann.get_area_at_index(index=connection.from_area_index)
+            to_area = self.app.briann.get_area_at_index(index=connection.to_area_index)
+            
+            edge_list.append((from_area, to_area, {'label': ''}))
         self.G.add_edges_from(edge_list)
 
     def plot(self):
@@ -491,11 +584,11 @@ class BrIANNCanvas(tk.Canvas):
         area_positions = nx.shell_layout(self.G)
         area_size = 0.3*self.dpi
         self.area_buttons = {}
-        for i, area_position in area_positions.items():
+        for area, area_position in area_positions.items():
             x0, y0 = self.cartesian_to_canvas(x=area_position[0], y=area_position[1])
-            color = 'orange' if self.app.briann.get_area_at_index(index= i) in self.app.briann._due_areas else 'lightgray'
-            button = customtkinter.CTkButton(self, text = i, fg_color=color, border_color='lightgray', border_width=0.05*area_size, text_color='black', command = lambda button_identifier=f"id{i}": self.area_click(button_identifier=button_identifier), anchor = tk.W, width = area_size, height=area_size, corner_radius=0.5*area_size)
-            self.area_buttons[f"id{i}"] = button
+            color = 'orange' if area in self.app.briann._due_areas else 'lightgray'
+            button = customtkinter.CTkButton(self, text = area.index, fg_color=color, border_color='lightgray', border_width=0.05*area_size, text_color='black', command = lambda button_identifier=f"id{area.index}": self.area_click(button_identifier=button_identifier), anchor = tk.W, width = area_size, height=area_size, corner_radius=0.5*area_size)
+            self.area_buttons[f"id{area.index}"] = button
             self.create_window(x0, y0, anchor=tk.CENTER, window=button)
             
         # Draw the edges
@@ -533,7 +626,7 @@ class BrIANNCanvas(tk.Canvas):
             xmf, ymf = self.cartesian_to_canvas(x=xmf, y=ymf)
             xmb, ymb = self.cartesian_to_canvas(x=xmb, y=ymb)
             x1, y1 = self.cartesian_to_canvas(x=x1, y=y1)
-            if u < v: 
+            if u.index < v.index: 
                 self.create_line(x0,y0, xmf,ymf, width=width, arrow='last'); self.create_line(xmf,ymf, x1,y1, width=width)
             else: 
                 self.create_line(x0,y0, xmb,ymb, width=width, arrow='last'); self.create_line(xmb,ymb, x1,y1, width=width)
