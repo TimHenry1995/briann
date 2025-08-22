@@ -303,8 +303,9 @@ class DraggableWidget():
         # Create window on canvas
         self._initial_x, self._initial_y = self.canvas.cartesian_to_canvas(x=initial_x, y=initial_y) # Convert to canvas space
         self._x, self._y = self._initial_x, self._initial_y # Current position in canvas space
-        self._window_index = self.canvas.create_window(self._x, self._y, window=widget, anchor=tk.CENTER)
         
+        self._window_index = self.canvas.create_window(self._x, self._y, window=widget, anchor=tk.CENTER)
+            
         # Position along Z-Axis
         widget.tk.call('lower', widget._w, None)
         widget.tk.call('lower', self.canvas._w, None)
@@ -313,7 +314,7 @@ class DraggableWidget():
         widget.bind("<ButtonPress-1>", self._on_drag_start)
         widget.bind("<B1-Motion>", self._on_drag_motion)
         widget.bind("<ButtonRelease-1>", self._on_drag_end)  # Reset mouse position on release
-    
+        
     @property
     def canvas(self) -> Canvas:
         """
@@ -427,9 +428,9 @@ class Area(DraggableWidget):
     def _on_area_click(self, area_index: str):
         
         # Create a popup
-        popup = customtkinter.CTkToplevel(self.canvas)
+        popup = tk.Toplevel()
         popup.geometry(f"{(int)(2*self.canvas.dpi)}x{(int)(2*self.canvas.dpi)}+{self.canvas.winfo_rootx()+self._button.winfo_x()}+{self.canvas.winfo_rooty()+self._button.winfo_y()}")
-        popup.overrideredirect(True)
+        popup.overrideredirect(True) # Prevent window decorations
         
         # Add widgets to popup
         customtkinter.CTkLabel(popup, text="Add Visualizer", anchor=tk.CENTER).pack(expand=True, fill="x", padx=10, pady=10)
@@ -439,15 +440,14 @@ class Area(DraggableWidget):
                                 command=lambda option_menu=option_menu, area_index=area_index, popup=popup: self.add_visualizer(option=option_menu.get(), area_index=area_index, popup=popup)
                                 ).pack(expand=True, fill="x", padx=10, pady=10)
         
-        # Display popup
+        # Display popup on top of everything else
         popup.lift()
         
         
     def add_visualizer(self, area_index:int, option: str, popup: customtkinter.CTkToplevel):
-        print(option, area_index)
-        StateVisualizer(x=100, y=300, width=300, height=200, canvas=self.canvas)
-        #StateVisualizer(x=400, y=300, width=300, height=200, canvas=self.canvas)
+        StateVisualizer(initial_x=self.x, initial_y=self.y, width=3, height=2, canvas=self.canvas)
         popup.destroy()
+        
 
 class Connection():
     
@@ -617,38 +617,21 @@ class NetworkVisualizer():
         :rtype: bpnc.BrIANN"""
         return self._briann
 
-class StateVisualizer():
+class StateVisualizer(DraggableWidget):
     """Superclass for a set of classes that create 2D visualizations of a :py:meth:`.TimeFrame.state` on a 1x1 unit square"""
 
-    def __init__(self, canvas:  Canvas, x: int, y: int, width: int, height: int):
-        self.canvas = canvas
-        
-        # Create Figure
-        plt.figure(figsize=(width/canvas.dpi, height/canvas.dpi), dpi=canvas.dpi)
-        plt.plot([1,2,3,4,5],[1,4,7,3,5])
-        self.window_position = [x,y]
-        self.window = FigureCanvasTkAgg(plt.gcf()).get_tk_widget()
-        self.window_index = canvas.create_window(self.window_position[0], self.window_position[1], window=self.window)
-        
-        # Position on Z-Axis
-        self.window.tk.call('lower', self.window._w, None)
-        self.canvas.tk.call('lower', self.canvas._w, None)
-
-        # Add drag listeners
-        self._drag_data = {"x": 0, "y": 0}
-        self.window.bind("<ButtonPress-1>", self._on_drag_start)
-        self.window.bind("<B1-Motion>", lambda event, c=canvas: self._on_drag_motion(event, c))
+    def __init__(self, canvas:  Canvas, initial_x: float, initial_y: float, width: float, height: float):
     
-    def _on_drag_start(self, event):
-        self.mouse_position = [self.window_position[0] + event.x, self.window_position[1] + event.y]
+        # Create Figure
+        plt.figure(figsize=(width, height), dpi=canvas.dpi)
+        plt.plot([1,2,3,4,5],[1,4,7,3,5])
+        widget = FigureCanvasTkAgg(plt.gcf()).get_tk_widget()
+        plt.close()
         
-    def _on_drag_motion(self, event, canvas):
-        dx = self.window_position[0] + event.x - self.mouse_position[0]
-        dy = self.window_position[1] + event.y - self.mouse_position[1]
-        canvas.move(self.window_index, dx, dy)
-        
+        super().__init__(canvas=canvas, widget=widget, initial_x=initial_x, initial_y=initial_y)
 
 if __name__ == "__main__":
+    
     path = bpuu.map_path_to_os(path="tests/briann 1.json")
     with open(path, 'r') as file:
         configuration = json.loads(file.read())
@@ -656,3 +639,49 @@ if __name__ == "__main__":
     briann = bpnc.BrIANN(configuration=configuration)
     app = Animator(briann=briann)
     app.mainloop()
+    """
+
+        
+    def create_new_window():
+        # Create a new top-level window
+        new_window = tk.Toplevel()
+        new_window.title("New Window")
+
+        # Add a label to the new window
+        label = tk.Label(new_window, text="This is a new window.")
+        label.pack(pady=10)
+
+        # Add a button to close this specific new window
+        close_button = tk.Button(
+            new_window,
+            text="Close This Window",
+            command=lambda: close_my_window(new_window) # Pass new_window here
+        )
+        close_button.pack(pady=10)
+
+    def close_my_window(window_to_close):
+        window_to_close.destroy()
+
+    # Main application window
+    root = tk.Tk()
+    root.title("Main Application")
+
+    # Button to create a new window
+    create_button = tk.Button(
+        root,
+        text="Open New Window",
+        command=create_new_window
+    )
+    create_button.pack(pady=20)
+
+    # Button to close the main window (optional)
+    close_root_button = tk.Button(
+        root,
+        text="Close Main Window",
+        command=lambda: close_my_window(root)
+    )
+    close_root_button.pack(pady=10)
+
+
+    root.mainloop()
+    """
