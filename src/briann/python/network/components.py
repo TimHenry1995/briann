@@ -1,17 +1,16 @@
 "This module collects all necessary components to build a BrIANN model."
 import numpy as np
 import torch
-from typing import List, Dict, Deque, Set, Generator
+from typing import List, Dict, Deque, Set, Any
 from queue import Queue
 import sys
 from abc import ABC, abstractmethod
-from collections import deque
 import json
-import copy
-import networkx as nx
 import matplotlib.pyplot as plt
-from src.briann.python.training import data_management as dmg
 import os
+sys.path.append(os.path.abspath(""))
+from src.briann.python.training import data_management as dmg
+import networkx as nx
 
 class TimeFrame():
     """A time frame in the simulation that holds a temporary state of an :py:class:`.Area`. Note, this constructor automatically computes the :py:attr:`~.TimeFrame.end_time` based on the provided `start_time` and `duration`.
@@ -598,7 +597,7 @@ class Source(Area):
         self.cool_down_duration = cool_down_duration
         self.remaining_cool_down_duration = cool_down_duration
         self.hold_function = hold_function
-        self._stimulus_batch = deque()
+        self._stimulus_batch = None
 
     @property
     def data_loader(self) -> torch.utils.data.DataLoader:
@@ -771,17 +770,17 @@ class BrIANN(torch.nn.Module):
 
     :param batch_size: The batch size used when passing instances through the areas.
     :type batch_size: int
-    :param configuration: A json string containing the configuration.
-    :type configuration: str
+    :param configuration: A configuration in the form of a dictionary.
+        :type configuration: Dict[str, Any]
     """
     
-    def __init__(self, configuration: str) -> "BrIANN":
+    def __init__(self, configuration: Dict[str,Any]) -> "BrIANN":
         
         # Call the parent constructor
         super().__init__()
 
         # Load the model based on the configuration
-        self._load_configuration(json_string=configuration)
+        self._load_from_configuration(configuration=configuration)
 
         # Set the time of the simulation
         self._current_simulation_time = 0.0
@@ -826,8 +825,7 @@ class BrIANN(torch.nn.Module):
 
         # Output
         return result
-
-        
+    
     @property
     def connections(self) -> Dict[int, Connection]:
         """A dictionary where each key is an area index and each value is a :py:class:`.Connection`.
@@ -882,15 +880,12 @@ class BrIANN(torch.nn.Module):
         """
         return self._current_simulation_time
 
-    def _load_configuration(self, json_string: str) -> None:
+    def _load_from_configuration(self, configuration: Dict[str, Any]) -> None:
         """Loads the configuration from the given **json_string** and sets up the areas and connections.
         
-        :param json_string: A configuration in the form of a dictionary.
-        :type json_string: str
+        :param configuration: A configuration in the form of a dictionary.
+        :type configuration: Dict[str, Any]
         """
-        
-        # Open configuration file
-        configuration = json.loads(json_string)
         
         # Check if all area indices are integers 
         area_indices = [item["index"] for item in configuration["areas"]]
@@ -1009,6 +1004,32 @@ class BrIANN(torch.nn.Module):
             
         # Set flag to indicate that all states are reset
         self._all_areas_reset = True
+
+    def to_simple_networkx(self) -> nx.DiGraph:
+        """Converts the BrIANN network to a NetworkX DiGraph where each node is simply the :py:meth:`~.Area.index` of a corresponding :py:class:`.Area`
+        and each edge is simply the triplet (*u*,*v*) where *u* is the :py:meht:`~Connection.from_index`, *v* the :py:meht:`~Connection.to_index` of the corresponding :py:class:`.Connection`.
+        
+        :return: A NetworkX DiGraph representing the BrIANN network.
+        :rtype: nx.DiGraph
+        """
+
+        # Create a directed graph
+        G = nx.DiGraph()
+         
+        # Add nodes for each area
+        area_indices = sorted(self.get_area_indices())
+        for area_index in area_indices:
+            area = self.get_area_at_index(index=area_index)
+            G.add_node(area, index=area_index)
+        
+        # Add edges for each connection
+        for connection in self.connections:
+            from_area = self.get_area_at_index(index=connection.from_area_index)
+            to_area = self.get_area_at_index(index=connection.to_area_index)
+            G.add_edge(u_of_edge=from_area, v_of_edge=to_area)
+        
+        # Output
+        return G
 
     def start(self, source_index_to_stimuli: Dict[int, Deque[TimeFrame]]) -> None:
         """Starts the simulation of a trial with the given **stimuli** as input.
