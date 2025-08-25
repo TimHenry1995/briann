@@ -55,6 +55,9 @@ class Animator(customtkinter.CTk):
         self._briann = briann
         self.selected_area = None
 
+        # Start simulation
+        self.briann.start_next_trial_batch()
+
         # Configure window
         self.title("BrIANN Animator")
         self.dpi = get_dpi()
@@ -114,29 +117,17 @@ class ControllerFrame(customtkinter.CTkFrame):
         print("Play button clicked")
 
     def on_next_time_frame_button_click(self):
-        print("Next time frame button clicked")
+        self._briann.step()
+        self.master.canvas.network_visualizer.update()
+        self.master.time_label.configure(text=f"Time: {self._briann.current_simulation_time:.3f} s")
+        
 
     def on_last_time_frame_button_click(self):
         print("Next time frame button clicked")
 
     def on_next_stimulus_button_click(self):
         print("Next time frame button clicked")
-
-    """
-    def on_start_button_click(self):
-        self.briann.start(stimuli=self._time_frames)
-        print(self.briann)
-
-    def on_step_button_click(self):
-        # Update briann
-        new_time_frame = self.briann.step()
-
-        # Update gui
-        self.time_stamp_label.configure(text=f"Time: {self.briann.current_simulation_time:.3f} s")
-        self.canvas.plot()
-
-        print(self.briann)
-     """   
+  
     
 class Canvas(tk.Canvas):
 
@@ -149,7 +140,7 @@ class Canvas(tk.Canvas):
         
         # Add visualizers
         self.create_reference_grid(x_min=-10, x_max=10, y_min=-10, y_max=10, spacing=1.0)
-        self.create_cross(x=0, y=0, size=0.5)
+        #self.create_cross(x=0, y=0, size=0.5)
         self.network_visualizer = NetworkVisualizer(briann=briann, canvas=self, initial_x=0.0, initial_y=0.0, width=4, height=4, area_size=0.5)
         
         self.bind("<ButtonPress-1>", self.left_mouse_press)
@@ -400,8 +391,8 @@ class Area(DraggableWidget):
         self._button = customtkinter.CTkButton(canvas, 
                                          text = area.index, 
                                          fg_color='lightgray', 
-                                         border_color='darkgray', 
-                                         border_width=0.01*size, 
+                                         border_color="darkgray",#"#325882",# "#14375e", 
+                                         border_width=0.05*size*canvas.dpi, 
                                          text_color='black', 
                                          anchor = tk.CENTER, 
                                          width=size*canvas.dpi, # Dynamcially adjusts width based on text length
@@ -416,6 +407,14 @@ class Area(DraggableWidget):
         # Set properties
         self._area = area
         self._subscribers = []
+
+    def display_as_active(self) -> None:
+        """Displays this area as active."""
+        self._button.configure(fg_color='orange', text_color='white')
+
+    def display_as_inactive(self) -> None:
+        """Displays this area as inactive."""
+        self._button.configure(fg_color='lightgray', text_color='black')
 
     @property
     def area(self) -> bpnc.Area:
@@ -451,13 +450,11 @@ class Area(DraggableWidget):
         
         # Display popup on top of everything else
         popup.lift()
-        
-        
+             
     def add_state_visualizer(self, area_index:int, option: str, popup: customtkinter.CTkToplevel):
         StateVisualizer1D(area=self.area, initial_x=self.x, initial_y=self.y, width=3, height=2, canvas=self.canvas)
         popup.destroy()
         
-
 class Connection():
     
     def __init__(self, connection: bpnc.Connection, from_area: Area, to_area: Area, canvas: Canvas, thickness: float = 2.0, bend_by: float = 0.0) -> "Connection":
@@ -566,57 +563,12 @@ class NetworkVisualizer():
             self.area_to_drawable[u].add_subscriber(self.edge_to_drawable[u.index, v.index])
             self.area_to_drawable[v].add_subscriber(self.edge_to_drawable[u.index, v.index])
         
-        '''
-        for (u,v) in curved_edges:
-            # Convert index to area
-            u = self.briann.get_area_at_index(index=u.index)
-            v = self.briann.get_area_at_index(index=v.index)
-
-            # Get start end points from area as well as midpoint
-            x0, y0 = area_to_position[u][0], area_to_position[u][1] # Starting point
-            x1, y1 = area_to_position[v][0], area_to_position[v][1] # Endpoint
-            d01 = (x1-x0, y1-y0)
-            xm, ym = x0+0.5*d01[0], y0+0.5*d01[1] # Mid-point
+    def update(self):
+        for area, drawable in self.area_to_drawable.items():
+            if area in self._briann._due_areas:
+                drawable.display_as_active()
+            else: drawable.display_as_inactive()
             
-            # Compute bend points orthogonal to midpoint
-            d_orthogonal = (1, -d01[0]/d01[1])
-            d_orthogonal_len = np.sqrt(d_orthogonal[0]**2+d_orthogonal[1]**2)
-            d_orthogonal = (d_orthogonal[0]/d_orthogonal_len, d_orthogonal[1]/d_orthogonal_len)
-            xmf, ymf = xm+0.1*d_orthogonal[0], ym+0.1*d_orthogonal[1] # Bend point for forward pointing arrow
-            xmb, ymb = xm-0.1*d_orthogonal[0], ym-0.1*d_orthogonal[1] # Bend point for backward pointing arrow
-            
-            # Draw on screen space
-            x0, y0 = self.canvas.cartesian_to_canvas(x=x0, y=y0)
-            xmf, ymf = self.canvas.cartesian_to_canvas(x=xmf, y=ymf)
-            xmb, ymb = self.canvas.cartesian_to_canvas(x=xmb, y=ymb)
-            x1, y1 = self.canvas.cartesian_to_canvas(x=x1, y=y1)
-            if u.index < v.index: 
-                first_segment = self.canvas.create_line(x0,y0, xmf,ymf, width=width, arrow='last'); second_segment = self.canvas.create_line(xmf,ymf, x1,y1, width=width)
-            else: 
-                first_segment = self.canvas.create_line(x0,y0, xmb,ymb, width=width, arrow='last'); second_segment = self.canvas.create_line(xmb,ymb, x1,y1, width=width)
-    
-            self.edge_to_drawable[(u.index, v.index)] = (first_segment, second_segment)
-
-        # Draw the straight edges
-        straight_edges = list(set(G.edges()) - set(curved_edges))
-        for (u,v) in straight_edges:
-            # Convert index to area
-            u = self.briann.get_area_at_index(index=u.index)
-            v = self.briann.get_area_at_index(index=v.index)
-
-            x0, y0 = area_to_position[u][0], area_to_position[u][1] # Starting point
-            x1, y1 = area_to_position[v][0], area_to_position[v][1] # Endpoint
-            d01 = (x1-x0, y1-y0)
-            xm, ym = x0+0.5*d01[0], y0+0.5*d01[1] # Mid-point
-
-            # Convert to screen space
-            x0, y0 = self.canvas.cartesian_to_canvas(x=x0, y=y0)
-            xm, ym = self.canvas.cartesian_to_canvas(x=xm, y=ym)
-            x1, y1 = self.canvas.cartesian_to_canvas(x=x1, y=y1)
-            first_segment = self.canvas.create_line(x0,y0,xm,ym, arrow='last', width=width); second_segment = self.canvas.create_line(x1,y1,xm,ym, width=width)
-            
-            self.edge_to_drawable[(u.index, v.index)] = (first_segment, second_segment)
-        '''
     @property
     def briann(self) -> bpnc.BrIANN:
         """
@@ -624,35 +576,65 @@ class NetworkVisualizer():
         :rtype: bpnc.BrIANN"""
         return self._briann
 
-class StateVisualizer(DraggableWidget):
+class StateVisualizer(DraggableWidget, bpnc.AreaStateSubscriber):
     """Superclass for a set of classes that create 2D visualizations of a :py:meth:`.TimeFrame.state` on a 1x1 unit square"""
 
     def __init__(self, area: bpnc.Area, canvas: Canvas, initial_x: float, initial_y: float, width: float, height: float):
     
         # Set proeprties
-        self.bpmc = area
+        self.bpnc = area
 
         # Create Figure
         self.figure = plt.figure(figsize=(width, height), dpi=canvas.dpi)
         self.figure.set_tight_layout(True)
         widget = FigureCanvasTkAgg(plt.gcf()).get_tk_widget()
         
+        # Call super
         super().__init__(canvas=canvas, widget=widget, initial_x=initial_x, initial_y=initial_y)
 
-    def update_plot(self):
+        # Subscribe to area
+        area.add_state_subscriber(subscriber=self)
+
+        # Initial draw
+        self.update_plot()
+        
+    def receive_state(self, area_index: int, time_frame: bpnc.TimeFrame) -> None:
         plt.figure(self.figure.number)
+        self.update_plot(time_frame=time_frame)
+
+    def update_plot(self, time_frame: bpnc.TimeFrame = None) -> None:
+        pass
         
 class StateVisualizer1D(StateVisualizer):
     """Visualizes the input of an area in a 2D plot."""
 
     def __init__(self, area: bpnc.Area, canvas: Canvas, initial_x: float, initial_y: float, width: float, height: float) -> "StateVisualizer1D":
         super().__init__(area=area, canvas=canvas, initial_x=initial_x, initial_y=initial_y, width=width, height=height)
-        self.update_plot()
+        
 
-    def update_plot(self):
-        super().update_plot()
-        print(self.bpmc.output_time_frame_accumulator.time_frame(current_time=1.0).state.shape)
-
+    def update_plot(self, time_frame: bpnc.TimeFrame = None) -> None:
+        
+        if time_frame is None:
+            plt.clf()
+            self.ts = [0]
+            self.ys = [0]
+            plt.plot(self.ts, self.ys)
+            plt.xlabel("Time (s)")
+            plt.ylabel("State")
+            plt.title(f"Area {self.bpnc.index}")
+            plt.grid(True)
+            self.figure.canvas.draw()
+        else:
+            plt.clf()
+            self.ts.append(time_frame.time_point)
+            self.ys.append(time_frame.state.cpu().detach().numpy()[0,0]) 
+            plt.plot(self.ts, self.ys)
+            plt.xlabel("Time (s)")
+            plt.ylabel("State")
+            plt.title(f"Area {self.bpnc.index}")
+            plt.grid(True)
+            self.figure.canvas.draw()
+        
 
 if __name__ == "__main__":
     

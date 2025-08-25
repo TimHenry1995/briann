@@ -85,11 +85,11 @@ class Sinusoids(Dataset):
         y = frequency
 
         # Generate sinusoid
-        X = torch.zeros([(int)(self._sampling_rate * self._duration), 2])
-        X[:,0] = torch.linspace(start=0.0, end=self._duration, steps=(int)(self._sampling_rate * self._duration))
-        X[:,1] = torch.sin(X[:,0] * 2 * torch.pi * frequency)
+        X = torch.zeros([(int)(self._sampling_rate * self._duration), 1])
+        ts = torch.linspace(start=0.0, end=self._duration, steps=(int)(self._sampling_rate * self._duration))
+        X[:,0] = torch.sin(ts * 2 * torch.pi * frequency)
         noise = torch.Tensor(bpur.StatelessRandom.pseudo_uniform(lower_bound=-self._noise_range/2, upper_bound=self._noise_range/2, seed=idx, count=X.shape[0]))
-        X[:,1] += noise
+        X[:,0] += noise
 
         # Output
         return X, y
