@@ -146,12 +146,12 @@ class TimeFrameAccumulator():
         """
         
         # Ensure input validity
-        if self._time_frame.time_point > time_frame.time_point:
+        if time_frame.time_point < self._time_frame.time_point:
             raise ValueError("The new time_frame needs to occur later in time than the current time frame.")
         
         # Update time frame
-        dt = self._time_frame.time_point - time_frame.time_point
-        self._time_frame = TimeFrame(state=self._time_frame.state*self.decay_rate**dt, time_point=time_frame.time_point)
+        dt = time_frame.time_point - self._time_frame.time_point
+        self._time_frame = TimeFrame(state=self._time_frame.state*self.decay_rate**dt + time_frame.state, time_point=time_frame.time_point)
 
     def time_frame(self, current_time: float) -> TimeFrame:
         """Provides a :py:class:`.TimeFrame` that holds the time-discounted sum of all :py:class:`.TimeFrame` objects added via the :py:meth:`~.TimeFrameAccumulator.accumulate` method.
@@ -530,8 +530,6 @@ class Area(torch.nn.Module):
         # Apply merge strategy
         if self._state_merge_strategy != None: self.input_states = self._state_merge_strategy(states=self.input_states)
 
-        print(f"Area {self.index} collected inputs at time {current_time:.3f}: {[state.shape for state in self.input_states]}")
-
     def forward(self) -> None:
         """Assuming :py:meth:`~.Area.collect_inputs` has been run on all areas just beforehand, this method passes that through
         the `:py:meth:`~.Area.transformation` of self and passes the result to the :py:meth:`.TimeFrameAccumulator.accumulate` of self.
@@ -558,8 +556,6 @@ class Area(torch.nn.Module):
         if hasattr(self, "_subscribers"):
             for subscriber in self._subscribers:
                 subscriber.receive_state(area_index=self.index, time_frame=new_time_frame)
-
-        print(f"Area {self.index} updated at time {current_time:.3f}: new state shape {new_state.shape}")
 
     def reset(self) -> None:
         """Resets the area to its initial state. This should be done everytime a new trial is simulated."""
@@ -767,6 +763,9 @@ class Source(Area):
         # Reset the remaining cool down duration
         self._remaining_cool_down_duration = self._cool_down_duration
 
+    def collect_inputs(self, current_time: float) -> None:
+        pass
+
     def forward(self) -> None:
         """Pops the next time frame from :py:meth:`~.Source.stimulus_batch` and passes it to the :py:meth:`~.Area.output_time_frame_accumulator`.
         If there are no more stimuli left, applies the :py:meth:`~.Source.hold_function` to a copy of the last stimulus :py:class:`.TimeFrame`."""
@@ -797,9 +796,6 @@ class Source(Area):
         if hasattr(self, "_subscribers"):
             for subscriber in self._subscribers:
                 subscriber.receive_state(area_index=self.index, time_frame=new_time_frame)
-
-
-        print(f"Area {self.index} updated at time {new_time_frame.time_point:.3f}: new state shape {new_time_frame.state.shape}")
 
     def reset(self) -> None:
 
@@ -1155,7 +1151,7 @@ class BrIANN(torch.nn.Module):
             elif area_next_time < min_time: # Current area is due sooner 
                 self._due_areas = set([area])
                 min_time = area_next_time
-        
+            
         # Update the simulation time
         self._current_simulation_time = min_time
 

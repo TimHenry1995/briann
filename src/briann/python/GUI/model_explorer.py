@@ -143,8 +143,10 @@ class Canvas(tk.Canvas):
         #self.create_cross(x=0, y=0, size=0.5)
         self.network_visualizer = NetworkVisualizer(briann=briann, canvas=self, initial_x=0.0, initial_y=0.0, width=4, height=4, area_size=0.5)
         
+        self._drag_start_x = None; self._drag_start_y = None # For panning
         self.bind("<ButtonPress-1>", self.left_mouse_press)
         self.bind("<B1-Motion>", self.drag_motion)
+        self.bind("<ButtonRelease-1>", lambda event: setattr(self, "_drag_start_x", None) or setattr(self, "_drag_start_y", None))  # Reset mouse position on release
         #self.bind("<MouseWheel>", self.zoom)
         self.bind(sequence="<Configure>", func= self.center_scroll_region)  # Update scroll region to fit all items
         
@@ -236,13 +238,14 @@ class Canvas(tk.Canvas):
         
     def drag_motion(self, event):
         widget = event.widget
-        dx = event.x - widget._drag_start_x
-        dy = event.y - widget._drag_start_y 
-        widget.xview_scroll(-dx, "units")
-        widget.yview_scroll(-dy, "units")
-        
-        widget._drag_start_x = event.x
-        widget._drag_start_y = event.y
+        if widget._drag_start_x != None and widget._drag_start_y != None:
+            dx = event.x - widget._drag_start_x
+            dy = event.y - widget._drag_start_y 
+            widget.xview_scroll(-dx, "units")
+            widget.yview_scroll(-dy, "units")
+            
+            widget._drag_start_x = event.x
+            widget._drag_start_y = event.y
 
     def zoom(self, event):
         x = self.canvasx(event.x)
@@ -616,9 +619,8 @@ class StateVisualizer1D(StateVisualizer):
         
         if time_frame is None:
             plt.clf()
-            self.ts = [0]
-            self.ys = [0]
-            plt.plot(self.ts, self.ys)
+            self.ts = []
+            self.ys = []
             plt.xlabel("Time (s)")
             plt.ylabel("State")
             plt.title(f"Area {self.bpnc.index}")
@@ -626,8 +628,8 @@ class StateVisualizer1D(StateVisualizer):
             self.figure.canvas.draw()
         else:
             plt.clf()
-            self.ts.append(time_frame.time_point)
-            self.ys.append(time_frame.state.cpu().detach().numpy()[0,0]) 
+            self.ys.append(time_frame.state.cpu().detach().numpy()[0,:]) 
+            self.ts.append(np.repeat([time_frame.time_point], time_frame.state.shape[-1]))
             plt.plot(self.ts, self.ys)
             plt.xlabel("Time (s)")
             plt.ylabel("State")
