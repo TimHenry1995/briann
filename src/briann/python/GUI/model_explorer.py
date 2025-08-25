@@ -50,7 +50,7 @@ class Animator(customtkinter.CTk):
     def __init__(self, briann: bpnc.BrIANN):
         # Call super
         super().__init__()
-
+        
         # Set properties
         self._briann = briann
         self.selected_area = None
@@ -71,6 +71,15 @@ class Animator(customtkinter.CTk):
         # Time Label
         self.time_label = customtkinter.CTkLabel(self.canvas, text=f"Time: {self.briann.current_simulation_time:.3f} s", anchor=tk.CENTER, font=("Arial", 16))
         self.time_label.place(relx=0.5, rely=0.01, anchor=tk.N)
+        
+        # Quit handler
+        self.protocol('WM_DELETE_WINDOW', self._on_close_window)  # root is your root window
+
+    def _on_close_window(self):
+        
+        # Close all matplotlib figures to prevent errors
+        plt.close('all')  
+        self.after(50, self.destroy)
         
 class ControllerFrame(customtkinter.CTkFrame):
 
@@ -437,15 +446,15 @@ class Area(DraggableWidget):
         option_menu = customtkinter.CTkOptionMenu(popup, values=["State", "Input", "Output"])
         option_menu.pack(expand=True, fill="x", padx=10, pady=10)
         customtkinter.CTkButton(popup, text="Add", 
-                                command=lambda option_menu=option_menu, area_index=area_index, popup=popup: self.add_visualizer(option=option_menu.get(), area_index=area_index, popup=popup)
+                                command=lambda option_menu=option_menu, area_index=area_index, popup=popup: self.add_state_visualizer(option=option_menu.get(), area_index=area_index, popup=popup)
                                 ).pack(expand=True, fill="x", padx=10, pady=10)
         
         # Display popup on top of everything else
         popup.lift()
         
         
-    def add_visualizer(self, area_index:int, option: str, popup: customtkinter.CTkToplevel):
-        StateVisualizer(initial_x=self.x, initial_y=self.y, width=3, height=2, canvas=self.canvas)
+    def add_state_visualizer(self, area_index:int, option: str, popup: customtkinter.CTkToplevel):
+        StateVisualizer1D(area=self.area, initial_x=self.x, initial_y=self.y, width=3, height=2, canvas=self.canvas)
         popup.destroy()
         
 
@@ -518,8 +527,6 @@ class NetworkVisualizer():
         :rtype: :py:class:`.NetworkVisualizer`"""
 
     def __init__(self, briann: bpnc.BrIANN, canvas: Canvas, initial_x: float, initial_y: float, width: float, height: float, area_size: float) -> "NetworkVisualizer":
-        
-        
         
         # Set properties
         self.canvas = canvas
@@ -620,15 +627,32 @@ class NetworkVisualizer():
 class StateVisualizer(DraggableWidget):
     """Superclass for a set of classes that create 2D visualizations of a :py:meth:`.TimeFrame.state` on a 1x1 unit square"""
 
-    def __init__(self, canvas:  Canvas, initial_x: float, initial_y: float, width: float, height: float):
+    def __init__(self, area: bpnc.Area, canvas: Canvas, initial_x: float, initial_y: float, width: float, height: float):
     
+        # Set proeprties
+        self.bpmc = area
+
         # Create Figure
-        plt.figure(figsize=(width, height), dpi=canvas.dpi)
-        plt.plot([1,2,3,4,5],[1,4,7,3,5])
+        self.figure = plt.figure(figsize=(width, height), dpi=canvas.dpi)
+        self.figure.set_tight_layout(True)
         widget = FigureCanvasTkAgg(plt.gcf()).get_tk_widget()
-        plt.close()
         
         super().__init__(canvas=canvas, widget=widget, initial_x=initial_x, initial_y=initial_y)
+
+    def update_plot(self):
+        plt.figure(self.figure.number)
+        
+class StateVisualizer1D(StateVisualizer):
+    """Visualizes the input of an area in a 2D plot."""
+
+    def __init__(self, area: bpnc.Area, canvas: Canvas, initial_x: float, initial_y: float, width: float, height: float) -> "StateVisualizer1D":
+        super().__init__(area=area, canvas=canvas, initial_x=initial_x, initial_y=initial_y, width=width, height=height)
+        self.update_plot()
+
+    def update_plot(self):
+        super().update_plot()
+        print(self.bpmc.output_time_frame_accumulator.time_frame(current_time=1.0).state.shape)
+
 
 if __name__ == "__main__":
     
@@ -639,49 +663,4 @@ if __name__ == "__main__":
     briann = bpnc.BrIANN(configuration=configuration)
     app = Animator(briann=briann)
     app.mainloop()
-    """
-
-        
-    def create_new_window():
-        # Create a new top-level window
-        new_window = tk.Toplevel()
-        new_window.title("New Window")
-
-        # Add a label to the new window
-        label = tk.Label(new_window, text="This is a new window.")
-        label.pack(pady=10)
-
-        # Add a button to close this specific new window
-        close_button = tk.Button(
-            new_window,
-            text="Close This Window",
-            command=lambda: close_my_window(new_window) # Pass new_window here
-        )
-        close_button.pack(pady=10)
-
-    def close_my_window(window_to_close):
-        window_to_close.destroy()
-
-    # Main application window
-    root = tk.Tk()
-    root.title("Main Application")
-
-    # Button to create a new window
-    create_button = tk.Button(
-        root,
-        text="Open New Window",
-        command=create_new_window
-    )
-    create_button.pack(pady=20)
-
-    # Button to close the main window (optional)
-    close_root_button = tk.Button(
-        root,
-        text="Close Main Window",
-        command=lambda: close_my_window(root)
-    )
-    close_root_button.pack(pady=10)
-
-
-    root.mainloop()
-    """
+    

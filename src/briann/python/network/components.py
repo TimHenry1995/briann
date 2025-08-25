@@ -163,12 +163,12 @@ class TimeFrameAccumulator():
         """
 
         # Ensure data correctness
-        if self.time_frame.time_point <= current_time:
+        if self._time_frame.time_point <= current_time:
             raise ValueError("When reading a TimeFrame, the current_time must be later than that of the read TimeFrame.")
         
         # Update time frame
-        dt = self.time_frame.time_point - current_time
-        self._time_frame = TimeFrame(state=self.time_frame.state*self.decay_rate**dt, time_point=current_time)
+        dt = self._time_frame.time_point - current_time
+        self._time_frame = TimeFrame(state=self._time_frame.state*self.decay_rate**dt, time_point=current_time)
 
         return self._time_frame 
 
