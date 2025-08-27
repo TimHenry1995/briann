@@ -54,6 +54,24 @@
             "from_area_index": 3,
             "to_area_index": 4,
             "transformation": "torch.nn.Linear(2, 2, bias=False)"
+        },
+        {
+            "index": 8,
+            "from_area_index": 1,
+            "to_area_index": 1,
+            "transformation": "torch.nn.Identity()"
+        },
+        {
+            "index": 9,
+            "from_area_index": 2,
+            "to_area_index": 2,
+            "transformation": "torch.nn.Identity()"
+        },
+        {
+            "index": 10,
+            "from_area_index": 3,
+            "to_area_index": 3,
+            "transformation": "torch.nn.Identity()"
         }
     ],
 

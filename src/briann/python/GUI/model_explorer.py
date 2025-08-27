@@ -127,8 +127,7 @@ class ControllerFrame(customtkinter.CTkFrame):
 
     def on_next_stimulus_button_click(self):
         print("Next time frame button clicked")
-  
-    
+      
 class Canvas(tk.Canvas):
 
     def __init__(self, briann: bpnc.BrIANN, **kwargs):
@@ -357,7 +356,7 @@ class DraggableWidget():
         # Save mouse position in canvas space
         self._mouse_x = self._initial_x + event.x
         self._mouse_y = self._initial_y + event.y
-        
+                
     def _on_drag_motion(self, event) -> None:
         """Begins a drag operation.
         :param event: The event that triggered this method.
@@ -369,6 +368,8 @@ class DraggableWidget():
         
         # Move self on canvas
         self.canvas.move(self._window_index, dx, dy)
+
+        # Update position of self
         self._x += dx
         self._y += dy
         
@@ -389,6 +390,9 @@ class Area(DraggableWidget):
     def __init__(self, area: bpnc.Area, canvas: Canvas, x: float, y: float, size: float) -> "Area":
         """x, y, and size are in inches"""
 
+
+        # Set properties
+        self._size = size
 
         # Create button
         self._button = customtkinter.CTkButton(canvas, 
@@ -411,6 +415,12 @@ class Area(DraggableWidget):
         self._area = area
         self._subscribers = []
 
+    @property
+    def size(self) -> float:
+        """:return: The size of this area in inches.
+        :rtype: float"""
+        return self._size
+
     def display_as_active(self) -> None:
         """Displays this area as active."""
         self._button.configure(fg_color='orange', text_color='white')
@@ -428,14 +438,14 @@ class Area(DraggableWidget):
 
     def add_subscriber(self, subscriber):
         self._subscribers.append(subscriber)
-
+    
     def _on_drag_motion(self, event) -> None:
         super()._on_drag_motion(event=event)
         
         # Redraw connections
         for subscriber in self._subscribers:
             subscriber.on_area_reposition()
-
+    
     def _on_area_click(self, area_index: str):
         
         # Create a popup
@@ -473,36 +483,65 @@ class Connection():
         self.draw()
 
     def draw(self):
-
-        # Get start end points from area as well as midpoint
+        # Get start end points from areas
         x0, y0 = self.from_area.x, self.from_area.y # Starting point
         x1, y1 = self.to_area.x, self.to_area.y # Endpoint
-        d01 = (x1-x0, y1-y0 if y1-y0 != 0 else 0.0001) # Prevent division by zero
-        xm, ym = x0+0.5*d01[0], y0+0.5*d01[1] # Mid-point
         
-        # Compute bend points orthogonal to midpoint
-        d_orthogonal = (1, -d01[0]/d01[1])
-        d_orthogonal_len = np.sqrt(d_orthogonal[0]**2+d_orthogonal[1]**2)
-        d_orthogonal = (d_orthogonal[0]/d_orthogonal_len, d_orthogonal[1]/d_orthogonal_len)
-        xmf, ymf = xm+self.bend_by*d_orthogonal[0], ym+self.bend_by*d_orthogonal[1] # Bend point for forward pointing arrow
-        xmb, ymb = xm-self.bend_by*d_orthogonal[0], ym-self.bend_by*d_orthogonal[1] # Bend point for backward pointing arrow
-        
-        # Draw on screen space
-        x0, y0 = self.canvas.cartesian_to_canvas(x=x0, y=y0)
-        xmf, ymf = self.canvas.cartesian_to_canvas(x=xmf, y=ymf)
-        xmb, ymb = self.canvas.cartesian_to_canvas(x=xmb, y=ymb)
-        x1, y1 = self.canvas.cartesian_to_canvas(x=x1, y=y1)
-        if self.from_area.area.index < self.to_area.area.index: 
-            self.first_segment = self.canvas.create_line(x0,y0, xmf,ymf, width=self.thickness, arrow='last'); self.second_segment = self.canvas.create_line(xmf,ymf, x1,y1, width=self.thickness)
-        else: 
-            self.first_segment = self.canvas.create_line(x0,y0, xmb,ymb, width=self.thickness, arrow='last'); self.second_segment = self.canvas.create_line(xmb,ymb, x1,y1, width=self.thickness)
+        # Self loop
+        if x0 == x1 and y0 == y1:
+            
+            # Bounding box for circle
+            top_left = (x0,y0)
+            a = 1*self.from_area.size # Step size for x and y from top left to bottom right
+            bottom_right = (x0 + a, y0 - a)
+            b = np.sqrt((a/2.0)**2+(a/2.0)**2) # length of diagonal from center of box to its corner
+            tmp = np.cos(np.radians(45)) * (b + (a/2.0)) # Projection onto one of the sides of the bounding box
+            arrow_position = (x0+tmp, y0-tmp)
 
+            # Draw on screen space
+            top_left = self.canvas.cartesian_to_canvas(x=top_left[0], y=top_left[1])
+            bottom_right = self.canvas.cartesian_to_canvas(x=bottom_right[0], y=bottom_right[1])
+            arrow_position = self.canvas.cartesian_to_canvas(x=arrow_position[0], y=arrow_position[1])
+            self._first_segment = self.canvas.create_arc(*top_left, *bottom_right, width=self.thickness, start=0, extent=359, style='arc')
+            self._second_segment = self.canvas.create_line(arrow_position[0]-1, arrow_position[1]+1, *arrow_position, arrow='last')
+            return
+
+        # Straight line
+        if self.bend_by == 0:
+            # Draw on screen space
+            x0, y0 = self.canvas.cartesian_to_canvas(x=x0, y=y0)
+            x1, y1 = self.canvas.cartesian_to_canvas(x=x1, y=y1)
+            xm, ym = (x0+x1)/2, (y0+y1)/2
+            self._first_segment = self.canvas.create_line(x0,y0, xm,ym, width=self.thickness, arrow='last'); 
+            self._second_segment = self.canvas.create_line(xm,ym, x1,y1, width=self.thickness); 
+            
+            return
+        
+        else:
+            # Arc (tilted and translated ellipse segment)
+            height = 2*self.bend_by
+            width = np.sqrt((x1-x0)**2+(y1-y0)**2)
+            
+            y = lambda x: np.sqrt(((height/2)**2)*(1 - (x**2)/((width/2)**2))) # Equation of an ellipse centered at (0,0) with radii width/2 and height/2
+            
+            n = 20
+            arc_points = np.linspace(start=-width/2, stop=width/2, num=n)
+            arc_points = np.array([[x, y(x)] for x in arc_points]).T
+            angle = np.arctan2(y1-y0, x1-x0) * 180 / np.pi # Angle between the two areas in degrees
+            R = np.array([[np.cos(np.radians(angle)), -np.sin(np.radians(angle))], [np.sin(np.radians(angle)), np.cos(np.radians(angle))]]) # Rotation matrix
+            arc_points = np.dot(R,arc_points) + np.array([[(x0+x1)/2], [(y0+y1)/2]]) # Apply rotation and translation
+            
+            # Draw on screen space
+            arc_points = [self.canvas.cartesian_to_canvas(x=arc_points[0,i], y=arc_points[1,i]) for i in range(arc_points.shape[1])]
+            self._first_segment = self.canvas.create_line(*arc_points[:len(arc_points)//2+1], width=self.thickness, smooth=True, arrow='last')
+            self._second_segment = self.canvas.create_line(*arc_points[len(arc_points)//2:], width=self.thickness, smooth=True)
+            
     def on_area_reposition(self):
         """Re-draws the connection when an area is repositioned."""
         
         # Remove old segments
-        self.canvas.delete(self.first_segment)
-        self.canvas.delete(self.second_segment)
+        self.canvas.delete(self._first_segment)
+        self.canvas.delete(self._second_segment)
         
         # Draw new segments
         self.draw()
@@ -561,7 +600,7 @@ class NetworkVisualizer():
             # Convert index to area
             u = self.briann.get_area_at_index(index=u.index)
             v = self.briann.get_area_at_index(index=v.index)
-            bend_by = 0.1 if (u,v) in curved_edges else 0.0
+            bend_by = 0.25 if (u,v) in curved_edges else 0.0
             self.edge_to_drawable[u.index, v.index] = Connection(connection=None, from_area=self.area_to_drawable[u], to_area=self.area_to_drawable[v], canvas=self.canvas, thickness=width, bend_by=bend_by)
             self.area_to_drawable[u].add_subscriber(self.edge_to_drawable[u.index, v.index])
             self.area_to_drawable[v].add_subscriber(self.edge_to_drawable[u.index, v.index])

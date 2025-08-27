@@ -2,7 +2,7 @@
 import numpy as np
 import torch
 from typing import List, Dict, Deque, Set, Any
-from queue import Queue
+
 import sys
 from abc import ABC, abstractmethod
 import json
@@ -13,7 +13,7 @@ from src.briann.python.training import data_management as dmg
 import networkx as nx
 
 class TimeFrame():
-    """A time frame in the simulation that holds a temporary state of an :py:class:`.Area`. Note, this constructor automatically computes the :py:attr:`~.TimeFrame.end_time` based on the provided `start_time` and `duration`.
+    """A time-frame in the simulation that holds a temporary state of an :py:class:`.Area`. 
 
     :param state: Sets the :py:attr:`~.TimeFrame.state` of this time frame.
     :type state: :py:class:`torch.Tensor`
@@ -60,51 +60,20 @@ class TimeFrame():
 
     def __repr__(self) -> str:
         return f"TimeFrame(time_point={self.time_point}, state shape={self.state.shape})"
-"""
-class TimeFrameInitializer():
-
-    def __init__(self, shape: List[int]) -> "TimeFrameInitializer":
-        self.shape = shape
-
-class ZerosTimeFrameInitializer(TimeFrameInitializer):
-
-    def __init__(self, shape: List[int]) -> "ZerosTimeFrameInitializer":
-        super().__init__(shape=shape)
-
-    def generator(self) -> Generator[torch.Tensor]:
-        while True:
-            yield torch.zeros(size=self.shape)
-
-
-class RandomUniformTimeFrameInitializer(RandomTimeFrameInitializer):
-
-    def __init__(self, shape: List[int], lower_bound: float, upper_bound: float) -> "ZerosTimeFrameInitializer":
-        super().__init__(shape=shape)
-
-        self.lower_bound = lower_bound
-        self.upper_bound = upper_bound
-
-    def _random_number_generator(self):
-        pass
-
-    def generator(self) -> Generator[torch.Tensor]:
-        while True:
-            yield torch.rand(size=self.shape, )
-
-"""
-
 
 class TimeFrameAccumulator():
     """
-    This class is used to accumulate :py:class:`.TimeFrame` objects. Accumulation happens by merging new time frames into the accumulator's
-    own timeframe using the :py:meth:`~.TimeFrameAccumulator.accumulate` function. An important feature of the accumulator is that during
-    every update, the information stored previously decays according to the provided `decay_rate`. The TimeFrameAccumulator is used for instance
-    to store outputs of :py:class:`.Connection` objects during signal transmission in the network.
+    This class is used to accumulate :py:class:`.TimeFrame` objects. Accumulation happens by adding new time-frames into the accumulator's
+    own time-frame using the :py:meth:`~.TimeFrameAccumulator.accumulate` function. An important feature of the accumulator is that during
+    every update, the information stored previously decays according to the provided `decay_rate`. This is done to ensure that older information 
+    has less influence on the current state of the accumulator than new information.
 
     :param initial_time_frame: Sets the :py:attr:`~.TimeFrameAccumulator.initial_time_frame` and :py:attr:`~.TimeFrameAccumulator.time_frame` of this time frame accumulator.
     :type initial_time_frame: :py:class:`.TimeFrame`
     :param decay_rate: Sets the :py:meth:`~.TimeFrameAccumulator.decay_rate` property of self.
     :type decay_rate: float
+    :returns: A new time-frame accumulator.
+    :rtype: :py:class:`.TimeFrameAccumulator`
     """
 
     def __init__(self, initial_time_frame: TimeFrame, decay_rate: float) -> "TimeFrameAccumulator":
@@ -120,7 +89,7 @@ class TimeFrameAccumulator():
     
     @property
     def decay_rate(self) -> float:
-        """:return: The rate at which the energy of the :py:meth:`~.TimeFrame.state` of :py:meth:`~.TimeFrameAccumulator.time_frame` decays as time passes. This rate is recommended to be greater than 1, in order to have true exponential decay. See py:meth:`~.TimeFrameAccumulator.accumulate` for details.
+        """:return: The rate at which the energy of the :py:meth:`~.TimeFrame.state` of :py:meth:`~.TimeFrameAccumulator.time_frame` decays as time passes. This rate is recommended to be in the range (0,1], in order to have true exponential decay. See py:meth:`~.TimeFrameAccumulator.accumulate` for details.
         :rtype: float"""
         return self._decay_rate
         
@@ -137,17 +106,24 @@ class TimeFrameAccumulator():
     def accumulate(self, time_frame: TimeFrame) -> None:
         """Sets the :py:meth:`~.TimeFrame.state` of the :py:meth:`~.TimeFrameAccumulator.time_frame` of self equal to the weighted sum of 
         the state of the new `time_frame` and the state the current time frame of self. The weight for the old state is 
-        w = :py:meth:`~.TimeFrameAccumulator.decay_rate`^dt, where dt is the time of the time frame currently held by self minus the more
-        recent time of the new `time_frame`. Hence, dt is a negative number. The weight for the new `time_frame` is simply equal to 1.
-        This method also sets the :py:meth:`~.TimeFrame.time_point` of the time frame of self equal to that of the new `time_frame`.
+        w = :py:meth:`~.TimeFrameAccumulator.decay_rate`^dt, where dt is the time of the provided `time_frame` minus the time-frame currently 
+        held by self. The weight for the new `time_frame` is simply equal to 1.
+        This method also sets the :py:meth:`~.TimeFrame.time_point` of the time-frame of self equal to that of the new `time_frame`.
 
-        :param time_frame: A new time frame to be merged into the :py:meth:`~.TimeFrameAccumulator.time_frame` of self.
-        :type time_frame: TimeFrame
+        :param time_frame: A new time-frame to be added to the :py:meth:`~.TimeFrameAccumulator.time_frame` of self.
+        :type time_frame: :py:class:`.TimeFrame`
+        :raises ValueError: If the state of `time_frame` does not have the same shape as that of the current time-frame of self.
+        :raises ValueError: If the time-point of `time_frame` is earlier than that of the current time-frame of self.
+        :return: None
         """
         
         # Ensure input validity
+        if not isinstance(time_frame, TimeFrame):
+            raise TypeError(f"The time_frame must be a TimeFrame but was {type(time_frame)}.")
+        if not time_frame.state.shape == self._time_frame.state.shape:
+            raise ValueError(f"The state of the new time_frame must have the same shape as that of self. Expected {self._time_frame.state.shape} but got {time_frame.state.shape}.")
         if time_frame.time_point < self._time_frame.time_point:
-            raise ValueError("The new time_frame needs to occur later in time than the current time frame.")
+            raise ValueError("The new time_frame must not occur earlier in time than the current time-frame of self.")
         
         # Update time frame
         dt = time_frame.time_point - self._time_frame.time_point
@@ -158,13 +134,17 @@ class TimeFrameAccumulator():
 
         :param current_time: The current time, used to discount the state of self.
         :type current_time: float
+        :raises ValueError: If `current_time` is earlier than the time-point of the current time-frame of self.
         :return: The time-discounted time-frame of this accumulator.
         :rtype: :py:class:`.TimeFrame`
         """
 
         # Ensure data correctness
+        if isinstance(current_time, int): current_time = (float)(current_time)
+        if not isinstance(current_time, float):
+            raise TypeError(f"The current_time must be a float but was {type(current_time)}.")
         if self._time_frame.time_point > current_time:
-            raise ValueError("When reading a TimeFrame, the current_time must be later than that of the read TimeFrame.")
+            raise ValueError(f"When reading a TimeFrame, the provided current_time ({current_time}) must be later than that of the time-frame held by self ({self._time_frame.time_point}).")
         
         # Update time frame
         dt = current_time - self._time_frame.time_point
@@ -176,24 +156,29 @@ class TimeFrameAccumulator():
         """Resets the :py:meth:`~.TimeFrameAccumulator.time_frame` of self. If `initial_time_frame` is provided, then this one will
         be used for reset and saved in :py:meth:`~.TimeFrameAccumulator.initial_time_frame`. Otherwise, the one provided during construction will be used.
 
-        :param initial_time_frame: The time frame to be used to set :py:meth:`~.TimeFrameAccumulator.time_frame` and :py:meth:`~.TimeFrameAccumulator.initial_time_frame` of self.
+        :param initial_time_frame: The time-frame to be used to set :py:meth:`~.TimeFrameAccumulator.time_frame` and :py:meth:`~.TimeFrameAccumulator.initial_time_frame` of self.
         :type initial_time_frame: TimeFrame, optional, defaults to None.
         """
 
         if initial_time_frame != None:
-            # Set initial time frame and time frame
+            # Ensure input validity
             if not isinstance(initial_time_frame, TimeFrame):
                 raise TypeError(f"The initial_time_frame must be a TimeFrame but was {type(initial_time_frame)}.")
+            
+            # Set properties
             self._time_frame = initial_time_frame
             self._initial_time_frame = initial_time_frame
         else:
             self._time_frame = self._initial_time_frame
 
-    def __repr(self) -> str:
-        return f"TimeFrameAccumulator(decay_rate={self.decay_rate})"
+    def __repr__(self) -> str:
+        return f"TimeFrameAccumulator(decay_rate={self.decay_rate}, state shape={self._time_frame.state.shape}, time_point={self._time_frame.time_point})"
         
 class Connection(torch.nn.Module):
-    """A connection between an :py:class:`Area` and a :py:class:`.TimeFrameBuffer`. This is analogous to a neural tract between areas of a biological neural network that not only sends information but also converts it between the reference frames of the input and output area.
+    """A connection between two :py:class:`Area` objects. This is analogous to a neural tract between areas of a biological neural network that 
+    not only sends information but also converts it between the reference frames of the input and output area. It thus has a 
+    :py:meth:`~.Connection.transformation` that is applied to the input before it is sent to the target area. For biological plausibility, 
+    the transformation should be a simple linear transformation, for instance a :py:class:`torch.nn.Linear` layer.
     
     :param index: Sets the :py:attr:`~.Area.index` of this area.
     :type index: int
@@ -205,6 +190,8 @@ class Connection(torch.nn.Module):
     :type input_time_frame_accumulator: :py:class:`.TimeFrameAccumulator`
     :param transformation: Sets the :py:meth:`~.Connection.transformation` of the connection.
     :type transformation: torch.nn.Module, optional, defaults to :py:class:`torch.nn.Identity`
+    :returns: A new connection.
+    :rtype: :py:class:`.Connection`
     """
 
     def __init__(self, index: int, from_area_index: int, to_area_index: int, input_time_frame_accumulator: TimeFrameAccumulator, transformation: torch.nn.Module = torch.nn.Identity()) -> "Connection":
@@ -221,7 +208,7 @@ class Connection(torch.nn.Module):
 
     @property
     def index(self) -> int:
-        """:return: The index of the connection used to identify it in the overall model.
+        """:return: The index used to identify this connection in the overall model.
         :rtype: int"""
         return self._index
     
@@ -237,7 +224,7 @@ class Connection(torch.nn.Module):
 
     @property
     def from_area_index(self) -> int:
-        """:return: The index of the area that is the source of the connection.
+        """:return: The index of the area that is the source of this connection.
         :rtype: int
         """
         return self._from_area_index
@@ -254,7 +241,7 @@ class Connection(torch.nn.Module):
 
     @property
     def to_area_index(self) -> int:
-        """:return: The index of the area that is the target of the connection.
+        """:return: The index of the area that is the target of this connection.
         :rtype: int
         """
         return self._to_area_index
@@ -264,7 +251,7 @@ class Connection(torch.nn.Module):
         
         # Check input validity
         if not isinstance(new_value, int):
-            raise TypeError(f"The to_area_index of Connection {self.index} must be an int but was {type(new_value)}.")
+            raise TypeError(f"The to_area_index of connection {self.index} must be an int but was {type(new_value)}.")
         
         # Set property
         self._to_area_index = new_value
@@ -285,24 +272,7 @@ class Connection(torch.nn.Module):
         
         # Set property
         self._input_time_frame_accumulator = new_value
-    '''
-    @property
-    def transformation(self) -> torch.nn.Module:
-        """:return: The transformation that is applied to the input to obtain the output.
-        :rtype: torch.nn.Module
-        """
-        return self._transformation
-        
-    @transformation.setter
-    def transformation(self, new_value: torch.nn.Module) -> None:
-
-        # Check input validity
-        if not isinstance(new_value, torch.nn.Module):
-            raise TypeError(f"Transformation of Connection {self.index} must be a torch.nn.Module object but was {type(new_value)}.")
-        
-        # Set property
-        self._transformation = new_value
-    '''
+    
     def forward(self, current_time: float) -> TimeFrame:
         """Reads the current state of the :py:meth:`.Connection.time_frame_accumulator` and applies the :py:meth:`~.Connection.transformation` to it. 
 
@@ -324,17 +294,18 @@ class Connection(torch.nn.Module):
         # Output
         return new_time_frame
 
-    
     def __repr__(self) -> str:
         """Returns a string representation of the connection."""
         return f"Connection(index={self._index}), from_area_index={self._from_area_index}, to_area_index={self._to_area_index})"
   
 class Area(torch.nn.Module):
     """An area corresponds to a small population of neurons that jointly hold one representation. It has a 
-    time frame accumulator that holds its state and is updated every time inputs from other areas are processed.
+    :py:meth:`~.Area.output_time_frame_accumulator` that holds its state and is updated every time inputs from other areas are processed.
+    It also has a :py:meth:`~.Area.transformation` that is applied to the collected inputs before they are added to the
        
     :param index: Sets the :py:attr:`~.Area.index` of this area.
     :type index: int
+    :raises ValueError: If the index is not a non-negative integer.
     :param output_time_frame_accumulator: Sets the :py:meth:`~.Area.output_time_frame_accumulator` of self.
     :type output_time_frame_accumulator: :py:class:`.TimeFrameAccumulator`
     :param input_connections: Sets the :py:meth:`~.Area.input_connections` of this area.
@@ -347,6 +318,8 @@ class Area(torch.nn.Module):
     :type update_rate: float
     :param state_merge_strategy: Sets the :py:meth:`~.Area.state_merge_strategy` of this area.
     :type state_merge_strategy: callable, optional, defaults to None
+    :returns: A new area.
+    :rtype: :py:class:`.Area`
     """
 
     def __init__(self, index: int, 
@@ -373,7 +346,7 @@ class Area(torch.nn.Module):
 
     @property
     def index(self) -> int:
-        """:return: The index of the area used to identify it in the overall model.
+        """:return: The index used to identify this area in the overall model.
         :rtype: int"""
         return self._index
     
@@ -401,7 +374,7 @@ class Area(torch.nn.Module):
 
     @property
     def output_time_frame_accumulator(self) -> TimeFrameAccumulator:
-        """:return: The time frame accumulator of this area.
+        """:return: The time-frame accumulator of this area. This holds the output state of the area which will be made available to other areas via connections.
         :rtype: :py:class:`.TimeFrameAccumulator`"""
         return self._output_time_frame_accumulator
 
@@ -522,10 +495,9 @@ class Area(torch.nn.Module):
         """
 
         # Collect all inputs
-        self.input_states = [None] * (1 + len(self.input_connections))
-        self.input_states[0] = self.output_time_frame_accumulator.time_frame(current_time=current_time).state # The previous output of self is treated as a new input
+        self.input_states = [None] * (len(self.input_connections))
         for i, connection in enumerate(self.input_connections):
-           self.input_states[i+1] = connection.forward(current_time=current_time).state
+           self.input_states[i] = connection.forward(current_time=current_time).state
             
         # Apply merge strategy
         if self._state_merge_strategy != None: self.input_states = self._state_merge_strategy(states=self.input_states)
