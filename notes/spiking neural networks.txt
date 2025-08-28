@@ -32,3 +32,20 @@ questions
 - next monday afternoon amsterdam biologically inspired learning, https://sites.google.com/bohte.com/ccn25-biolearning-satevent/home
 
 - supevision
+
+- ebrain simulator https://www.nest-simulator.org 
+https://www.ebrains.eu
+
+- for MNIST have established baseline model
+
+- https://zenkelab.org/resources/spiking-heidelberg-datasets-shd/
+
+- contrastive multimodal 
+
+does hierarhical temporal learning actually reduce overall training time? Do experiments
+
+- speech mnist https://github.com/Jakobovski/free-spoken-digit-dataset/tree/master
+
+pytorch also has just in time compliation 
+
+- parallel CRNN https://arxiv.org/abs/2508.03614

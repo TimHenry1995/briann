@@ -82,7 +82,6 @@
             "index": 0,
             "initial_state": "torch.zeros(1)",
             "update_rate": 10.0,
-            "cool_down_duration": 0.1,
             "dataset_index": 0
         },
         {

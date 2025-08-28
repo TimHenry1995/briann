@@ -509,7 +509,7 @@ class Area(torch.nn.Module):
 
     def forward(self) -> None:
         """Assuming :py:meth:`~.Area.collect_inputs` has been run on all areas of the simulation just beforehand, this method passes the buffered inputs through
-        the `:py:meth:`~.Area.transformation` of self and passes the result to the :py:meth:`.TimeFrameAccumulator.accumulate` of self.
+        the `:py:meth:`~.Area.transformation` of self (if exists) and passes the result to the :py:meth:`.TimeFrameAccumulator.accumulate` of self.
         """
 
         # Determine current time
@@ -518,19 +518,20 @@ class Area(torch.nn.Module):
 
         # Retrieve inputs
         if self._input_states == None:
-            raise ValueError(f"The input_states of area {self.index} are None. Please run collect_inputs() on all areas before calling forward().")
-        input_states = self._input_states
+            raise ValueError(f"The input_states of area {self.index} are None. Run collect_inputs() on all areas before calling forward().")
+        new_state = self._input_states
         self._input_states = None
 
         # Apply transformation to the states
-        new_state = self._transformation.forward(input_states)
+        if not self._transformation == None: new_state = self._transformation.forward(new_state)
 
-        # Create and accumulate a new time frame for the current state
+        # Create and accumulate a new time-frame for the current state
         new_time_frame = TimeFrame(state=new_state, time_point=current_time)
         self._output_time_frame_accumulator.accumulate(time_frame=new_time_frame)        
 
         # Notify subscribers
         if hasattr(self, "_subscribers"):
+            new_time_frame = self.output_time_frame_accumulator.time_frame(current_time=current_time)
             for subscriber in self._subscribers:
                 subscriber.receive_state(area_index=self.index, time_frame=new_time_frame)
 
@@ -601,9 +602,10 @@ class AreaStateSubscriber(ABC):
 
 class Source(Area):
     """The source :py:class:`.Area` is a special area because it streams the input to the other areas. In order to set it up for the simulation of a trial,
-    load stimuli via the :py:meth:`~.Source.load_stimulus_batch method. Then, during each call to the :py:meth:`.~Area.forward` method, one :py:class:`.TimeFrame` 
-    will be taken from the stimuli and placed in the :py:meth:`~.Area.TimeFrameAccumulator` other areas. Once the time frames are all streamed, the source area will use the **hold_function**
-    to hold the last time frame for a specified **cool_down_duration**, to let the other areas finish their processing.
+    load stimuli via the :py:meth:`~.Source.load_stimulus_batch method. Then, during each call to the :py:meth:`.~Area.collect_inputs` method, one :py:class:`.TimeFrame` 
+    will be taken from the stimuli and held in a bffer. Upon calling the :py:meth:`~Area.forward` method, that time-frame will be placed in the
+    :py:meth:`~.Area.TimeFrameAccumulator`, so that it can be read by other areas. Once the time frames are all streamed, the source area will no longer add new
+    time-frames to the accumulator and hence its representation will simply decay over time.
 
     :param index: Sets the :py:attr:`~.Area.index` of this area.
     :type index: int
@@ -613,13 +615,11 @@ class Source(Area):
     :type output_connections: Dict[int, :py:class:`.Connection`]
     :param update_rate: Sets the :py:meth:`~.Area.update_rate` of this area.
     :type update_rate: float
-    :param cool_down_duration: Sets the :py:meth`.~.Source.cool_down_duration` of the source area.
-    :type cool_down_duration: float
-    :param hold_function: Sets the :py:meth:`~.Source.hold_function` of the source area.
-    :type hold_function: Callable, optional, default to lambda last_state: torch.zeros_like(last_state)
+    :return: An instance of this class.
+    :rtype: :py:class:`.Source`
     """
 
-    def __init__(self, index: int, output_time_frame_accumulator: TimeFrameAccumulator, output_connections: Dict[int, Connection], update_rate: float, cool_down_duration: float, hold_function: callable = lambda last_state: torch.zeros_like(last_state), data_loader: torch.utils.data.DataLoader=None) -> "Source":
+    def __init__(self, index: int, output_time_frame_accumulator: TimeFrameAccumulator, output_connections: Dict[int, Connection], update_rate: float, data_loader: torch.utils.data.DataLoader=None) -> "Source":
 
         # Call the parent constructor
         super().__init__(index=index,
@@ -631,9 +631,6 @@ class Source(Area):
         
         # Set properties
         self.data_loader = data_loader
-        self.cool_down_duration = cool_down_duration
-        self.remaining_cool_down_duration = cool_down_duration
-        self.hold_function = hold_function
         self._stimulus_batch = None
 
     @property
@@ -657,55 +654,6 @@ class Source(Area):
 
         # Set
         self._data_loader = new_value
-
-    @property
-    def cool_down_duration(self) -> float:
-        """The cool down duration of the source area. This is the duration in seconds for which the source area shall hold the last state using :py:meth:`~.Source.hold_function` at the end of the simulation to let the other areas finish their processing.
-        
-        :return: The cool down duration.
-        :rtype: float
-        """
-        return self._cool_down_duration
-    
-    @cool_down_duration.setter
-    def cool_down_duration(self, new_value: float) -> None:
-        if not isinstance(new_value, float):
-            raise TypeError("The cool_down_duration must be a float.")
-        if not new_value >= 0:
-            raise ValueError("The cool_down_duration must be greater than or equal to 0.")
-        self._cool_down_duration = new_value
-
-    @property
-    def remaining_cool_down_duration(self) -> float:
-        """The remaining :py:meth:`~.Source.cool_down_duration` to be decayed once the current stimuli have been streamed. This is used to determine the end of the simulation.
-
-        :return: The cool down duration.
-        :rtype: float
-        """
-        return self._cool_down_duration
-    
-    @remaining_cool_down_duration.setter
-    def remaining_cool_down_duration(self, new_value: float) -> None:
-        if not isinstance(new_value, float):
-            raise TypeError("The remaining_cool_down_duration must be a float.")
-        if not new_value >= 0:
-            raise ValueError("The remaining_cool_down_duration must be greater than or equal to 0.")
-        self._remaining_cool_down_duration = new_value
-
-    @property
-    def hold_function(self) -> callable:
-        """The hold function that is called whenever the source area has no more time frames to process. It is used to hold the state of the source areas last :py:class:`.TimeFrame` object for :py:meth:`~.Source.cool_down_duration` seconds while the remaining model areas are still processing the input.
-        
-        :return: The hold function.
-        :rtype: callable
-        """
-        return self._hold_function
-
-    @hold_function.setter
-    def hold_function(self, new_value) -> None:
-        if not callable(new_value):
-            raise TypeError("The hold_function must be a Callable that takes as input a tensor which is equal to the state of the last TimeFrame object generated from the input to the simulation.")
-        self._hold_function = new_value
 
     @Area.state_merge_strategy.setter
     def state_merge_strategy(self, new_value: callable) -> None:
@@ -743,54 +691,34 @@ class Source(Area):
             time_frame = TimeFrame(state=X[:,t,:], time_point = (t)/self.update_rate)
             self._stimulus_batch.appendleft(time_frame)
 
-        # Reset the remaining cool down duration
-        self._remaining_cool_down_duration = self._cool_down_duration
-
         # Load first time-frame
-        self._update_count = self.update_count - 1 # This will be incremented again in the forward method and then the first data point corresponds to the default update count
+        self._update_count = self.update_count - 1 # This will be incremented again in the forward method and then the first data point corresponds to the default update count of 0
+        self.collect_inputs(current_time=0.0)
         self.forward()
 
     def collect_inputs(self, current_time: float) -> None:
-        pass
-
-    def forward(self) -> None:
-        """Pops the next time frame from :py:meth:`~.Source.stimulus_batch` and passes it to the :py:meth:`~.Area.output_time_frame_accumulator`.
-        If there are no more stimuli left, applies the :py:meth:`~.Source.hold_function` to a copy of the last stimulus :py:class:`.TimeFrame`."""
-
-        # Increment update count
-        self._update_count += 1
+        """Pops the next :py:class:`.TimeFrame` from :py:meth:`~.Source.stimulus_batch` or generates an array of zeros if the stimulus stream is over. Either way, the result is buffered internally to be made available upon calling :py:meth:`~.Area.forward`.
+        
+        :param current_time: The current time of the simulation.
+        :type current_time: float
+        :raises ValueError: if the `current_time` is not equal to the time of the popped :py:class:`.TimeFrame`.
+        :rtype: None
+        """
 
         # Get the next time frame
         if len (self._stimulus_batch) > 0:
             new_time_frame = self._stimulus_batch.pop()
-        elif self._remaining_cool_down_duration > 0:
-            # If there are no more time frames, hold the last state for the cool down duration
-            # Continue the stream
-            state = self._hold_function(self._last_time_frame.state)
-            dt = 1/self.update_rate
-            new_time_frame = TimeFrame(state=state, time_point = self._last_time_frame.time_point + dt)
-            self._remaining_cool_down_duration -= self._processing_time
-        else: # Simulation is over
-            return    
-        
-        # Store a reference to the current time-frame for later
-        self._last_time_frame = new_time_frame    
-        
-        # Pass the time frame to the accumulator
-        self.output_time_frame_accumulator.accumulate(time_frame = new_time_frame)
 
-        # Notify subscribers
-        if hasattr(self, "_subscribers"):
-            for subscriber in self._subscribers:
-                subscriber.receive_state(area_index=self.index, time_frame=new_time_frame)
+            # Ensure input validity
+            if not current_time == new_time_frame.time_point: raise ValueError(f"The collect_inputs method of Source {self.index} expected to be called next at time-point {new_time_frame.time_point} but was called at time-point {current_time}.")
 
-    def reset(self) -> None:
-
-        # Call parent
-        super().reset()
-
-        # Reset remaining cool down duration
-        self._remaining_cool_down_duration = self._cool_down_duration
+            # Store a reference to the current time-frame for later
+            self._input_states = new_time_frame.state
+            
+        else:
+            # No more time-frames to pop, simply create array of zeros to be added to the output time-frame accumulator in forward()
+            current_time_frame = self.output_time_frame_accumulator.time_frame(current_time=current_time)
+            self._input_states = torch.zeros_like(current_time_frame)
 
 class Target(Area):
     """This class is an subclass of :py:class:`.Area` and has the same functionality as a regular area except that it has no output connections.
@@ -1119,17 +1047,12 @@ class BrIANN(torch.nn.Module):
 
     def step(self) -> None:
         """Performs one step of the simulation by processing the next :py:class:`.TimeFrame` from the source areas and passing it through the areas.
-        This method needs to be called repeatedly until the end of the simulation.
+        This method needs to be called repeatedly to step through the simulation. The stimulation does not have an internally checked stopping condition,
+        meaning it will simply continue running, even if the stimuli ran out. The caller of this method thus needs to determine when to stop the simulation.
 
-        :raises StopIteration: if the simulation is over.
-        
+        :rtype: None
         """
         
-        # If no more areas are due, stop the simulation
-        for area in self.areas:
-            if isinstance(area, Source) and area.remaining_cool_down_duration <= 0:            
-                raise StopIteration("Cannot take another step because simulation is over.")
-
         # Find the areas that are due next
         self._due_areas = set([])
         min_time = sys.float_info.max
