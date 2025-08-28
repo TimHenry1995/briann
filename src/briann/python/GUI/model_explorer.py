@@ -56,7 +56,7 @@ class Animator(customtkinter.CTk):
         self.selected_area = None
 
         # Start simulation
-        self.briann.start_next_trial_batch()
+        self.briann.load_next_stimulus_batch()
 
         # Configure window
         self.title("BrIANN Animator")
@@ -121,12 +121,11 @@ class ControllerFrame(customtkinter.CTkFrame):
         self.master.canvas.network_visualizer.update()
         self.master.time_label.configure(text=f"Time: {self._briann.current_simulation_time:.3f} s")
         
-
     def on_last_time_frame_button_click(self):
         print("Next time frame button clicked")
 
     def on_next_stimulus_button_click(self):
-        print("Next time frame button clicked")
+        self._briann.load_next_stimulus_batch()
       
 class Canvas(tk.Canvas):
 
@@ -138,7 +137,7 @@ class Canvas(tk.Canvas):
         self.dpi = get_dpi()
         
         # Add visualizers
-        self.create_reference_grid(x_min=-10, x_max=10, y_min=-10, y_max=10, spacing=1.0)
+        self.create_reference_grid(x_min=-15, x_max=15, y_min=-15, y_max=15, spacing=1.0)
         #self.create_cross(x=0, y=0, size=0.5)
         self.network_visualizer = NetworkVisualizer(briann=briann, canvas=self, initial_x=0.0, initial_y=0.0, width=4, height=4, area_size=0.5)
         
@@ -455,7 +454,7 @@ class Area(DraggableWidget):
         
         # Add widgets to popup
         customtkinter.CTkLabel(popup, text="Add Visualizer", anchor=tk.CENTER).pack(expand=True, fill="x", padx=10, pady=10)
-        option_menu = customtkinter.CTkOptionMenu(popup, values=["State", "Input", "Output"])
+        option_menu = customtkinter.CTkOptionMenu(popup, values=["Line Chart", "t-SNE", "Heatmap"])
         option_menu.pack(expand=True, fill="x", padx=10, pady=10)
         customtkinter.CTkButton(popup, text="Add", 
                                 command=lambda option_menu=option_menu, area_index=area_index, popup=popup: self.add_state_visualizer(option=option_menu.get(), area_index=area_index, popup=popup)
@@ -465,7 +464,8 @@ class Area(DraggableWidget):
         popup.lift()
              
     def add_state_visualizer(self, area_index:int, option: str, popup: customtkinter.CTkToplevel):
-        StateVisualizer1D(area=self.area, initial_x=self.x, initial_y=self.y, width=3, height=2, canvas=self.canvas)
+        if option == "Line Chart":
+            StateVisualizerLineChart(area=self.area, initial_x=self.x, initial_y=self.y, width=3, height=2, canvas=self.canvas)
         popup.destroy()
         
 class Connection():
@@ -638,7 +638,8 @@ class StateVisualizer(DraggableWidget, bpnc.AreaStateSubscriber):
         area.add_state_subscriber(subscriber=self)
 
         # Initial draw
-        self.update_plot()
+        self.update_plot(time_frame=None) # Initialization
+        self.update_plot(time_frame = area.output_time_frame_accumulator.time_frame(current_time=canvas.master._briann.current_simulation_time)) # Draw current time frame
         
     def receive_state(self, area_index: int, time_frame: bpnc.TimeFrame) -> None:
         plt.figure(self.figure.number)
@@ -647,35 +648,33 @@ class StateVisualizer(DraggableWidget, bpnc.AreaStateSubscriber):
     def update_plot(self, time_frame: bpnc.TimeFrame = None) -> None:
         pass
         
-class StateVisualizer1D(StateVisualizer):
+class StateVisualizerLineChart(StateVisualizer):
     """Visualizes the input of an area in a 2D plot."""
 
-    def __init__(self, area: bpnc.Area, canvas: Canvas, initial_x: float, initial_y: float, width: float, height: float) -> "StateVisualizer1D":
+    def __init__(self, area: bpnc.Area, canvas: Canvas, initial_x: float, initial_y: float, width: float, height: float) -> "StateVisualizerLineChart":
         super().__init__(area=area, canvas=canvas, initial_x=initial_x, initial_y=initial_y, width=width, height=height)
         
-
     def update_plot(self, time_frame: bpnc.TimeFrame = None) -> None:
         
+        plt.clf()
         if time_frame is None:
-            plt.clf()
-            self.ts = []
-            self.ys = []
-            plt.xlabel("Time (s)")
-            plt.ylabel("State")
-            plt.title(f"Area {self.bpnc.index}")
-            plt.grid(True)
-            self.figure.canvas.draw()
+            self.ts = np.empty(shape=[0,0])
+            self.ys = np.empty(shape=[0,0])
         else:
-            plt.clf()
-            self.ys.append(time_frame.state.cpu().detach().numpy()[0,:]) 
-            self.ts.append(np.repeat([time_frame.time_point], time_frame.state.shape[-1]))
-            plt.plot(self.ts, self.ys)
-            plt.xlabel("Time (s)")
-            plt.ylabel("State")
-            plt.title(f"Area {self.bpnc.index}")
-            plt.grid(True)
-            self.figure.canvas.draw()
+                        
+            if len(self.ts) == 0: self.ts = np.repeat([time_frame.time_point], time_frame.state.shape[-1])[np.newaxis,:]
+            else: self.ts = np.concatenate([self.ts, np.repeat([time_frame.time_point], time_frame.state.shape[-1])[np.newaxis,:]], axis=0)
         
+            if len(self.ys) == 0: self.ys = time_frame.state.cpu().detach().numpy()[0,:][np.newaxis,:]
+            else: self.ys = np.concatenate([self.ys, time_frame.state.cpu().detach().numpy()[0,:][np.newaxis,:]], axis=0)  
+        
+        plt.plot(self.ts, self.ys)
+        for channel in range(self.ys.shape[1]): plt.scatter(self.ts[:,channel], self.ys[:,channel])
+        plt.xlabel("Time (s)")
+        plt.ylabel("State")
+        plt.title(f"Area {self.bpnc.index}")
+        plt.draw()
+    
 
 if __name__ == "__main__":
     

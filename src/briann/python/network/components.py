@@ -62,25 +62,24 @@ class TimeFrame():
         return f"TimeFrame(time_point={self.time_point}, state shape={self.state.shape})"
 
 class TimeFrameAccumulator():
-    """
-    This class is used to accumulate :py:class:`.TimeFrame` objects. Accumulation happens by adding new time-frames into the accumulator's
+    """This class is used to accumulate :py:class:`.TimeFrame` objects. Accumulation happens by adding new time-frames into the accumulator's
     own time-frame using the :py:meth:`~.TimeFrameAccumulator.accumulate` function. An important feature of the accumulator is that during
-    every update, the information stored previously decays according to the provided `decay_rate`. This is done to ensure that older information 
-    has less influence on the current state of the accumulator than new information.
+    every update, the currently stored information decays according to the provided `decay_rate` and the time since the last update. 
+    This is done to ensure that older information has less influence on the current state of the accumulator than new information.
 
     :param initial_time_frame: Sets the :py:attr:`~.TimeFrameAccumulator.initial_time_frame` and :py:attr:`~.TimeFrameAccumulator.time_frame` of this time frame accumulator.
     :type initial_time_frame: :py:class:`.TimeFrame`
     :param decay_rate: Sets the :py:meth:`~.TimeFrameAccumulator.decay_rate` property of self.
     :type decay_rate: float
-    :returns: A new time-frame accumulator.
+    :return: A new time-frame accumulator.
     :rtype: :py:class:`.TimeFrameAccumulator`
     """
 
     def __init__(self, initial_time_frame: TimeFrame, decay_rate: float) -> "TimeFrameAccumulator":
            
-        # Set initial time frame and time frame
+        # Set initial time-frame and time-frame
         if not isinstance(initial_time_frame, TimeFrame):
-            raise TypeError(f"The initial_time_frame must be a TimeFrame but was {type(initial_time_frame)}.")
+            raise TypeError(f"The initial_time_frame was expected to be a TimeFrame but was {type(initial_time_frame)}.")
         self._time_frame = initial_time_frame
         self._initial_time_frame = initial_time_frame
 
@@ -89,7 +88,7 @@ class TimeFrameAccumulator():
     
     @property
     def decay_rate(self) -> float:
-        """:return: The rate at which the energy of the :py:meth:`~.TimeFrame.state` of :py:meth:`~.TimeFrameAccumulator.time_frame` decays as time passes. This rate is recommended to be in the range (0,1], in order to have true exponential decay. See py:meth:`~.TimeFrameAccumulator.accumulate` for details.
+        """:return: The rate taken from the interval [0,1] at which the energy of the :py:meth:`~.TimeFrame.state` of :py:meth:`~.TimeFrameAccumulator.time_frame` decays as time passes. This rate is recommended to be in the range (0,1), in order to have true exponential decay. If set to 1, there is no decay, if set to 0, there is no memory. See py:meth:`~.TimeFrameAccumulator.accumulate` for details.
         :rtype: float"""
         return self._decay_rate
         
@@ -100,6 +99,9 @@ class TimeFrameAccumulator():
         if not isinstance(new_value, float):
             raise TypeError(f"The decay_rate should be a float but was {type(new_value)}.")
         
+        if new_value < 0 or new_value > 1: 
+            raise ValueError(f"The decay_rate should not be outside the interval [0,1] but was set to {new_value}.")
+
         # Set property
         self._decay_rate = new_value
 
@@ -110,7 +112,7 @@ class TimeFrameAccumulator():
         held by self. The weight for the new `time_frame` is simply equal to 1.
         This method also sets the :py:meth:`~.TimeFrame.time_point` of the time-frame of self equal to that of the new `time_frame`.
 
-        :param time_frame: A new time-frame to be added to the :py:meth:`~.TimeFrameAccumulator.time_frame` of self.
+        :param time_frame: The new time-frame to be added to the :py:meth:`~.TimeFrameAccumulator.time_frame` of self.
         :type time_frame: :py:class:`.TimeFrame`
         :raises ValueError: If the state of `time_frame` does not have the same shape as that of the current time-frame of self.
         :raises ValueError: If the time-point of `time_frame` is earlier than that of the current time-frame of self.
@@ -190,7 +192,7 @@ class Connection(torch.nn.Module):
     :type input_time_frame_accumulator: :py:class:`.TimeFrameAccumulator`
     :param transformation: Sets the :py:meth:`~.Connection.transformation` of the connection.
     :type transformation: torch.nn.Module, optional, defaults to :py:class:`torch.nn.Identity`
-    :returns: A new connection.
+    :return: A new connection.
     :rtype: :py:class:`.Connection`
     """
 
@@ -299,10 +301,12 @@ class Connection(torch.nn.Module):
         return f"Connection(index={self._index}), from_area_index={self._from_area_index}, to_area_index={self._to_area_index})"
   
 class Area(torch.nn.Module):
-    """An area corresponds to a small population of neurons that jointly hold one representation. It has a 
-    :py:meth:`~.Area.output_time_frame_accumulator` that holds its state and is updated every time inputs from other areas are processed.
-    It also has a :py:meth:`~.Area.transformation` that is applied to the collected inputs before they are added to the
-       
+    """An area corresponds to a small population of neurons that jointly hold a representation in the area's :py:meth:`~.Area.output_time_frame_accumulator`.
+    Given a time-point t and a set S of areas that should be updated at t, the caller should update the areas' states in two consecutive loops over S. The first loop
+    should call the :py:meth:`~.Area.collect_inputs` method on each area to make it buffer its inputs from the overall network. Then, in the second loop, the 
+    :py:meth:`~Area.forward` method should be called on each area of S to apply its corresponding :py:meth:`~Area.state_merge_strategy` and 
+    :py:meth:`~.Area.transformation` to the buffered inputs. This splitting of input collection and forward transformation allows for parallelization of areas.
+    
     :param index: Sets the :py:attr:`~.Area.index` of this area.
     :type index: int
     :raises ValueError: If the index is not a non-negative integer.
@@ -312,13 +316,13 @@ class Area(torch.nn.Module):
     :type input_connections: List[:py:class:`.Connection`]
     :param output_connections: Sets the :py:meth:`~.Area.output_connections` of this area.
     :type output_connections: List[:py:class:`.Connection`]
-    :param transformation: Sets the :py:meth:`~.Area.transformation` of this area.
+    :param transformation: Sets the :py:meth:`~.Area.transformation` of this area. If a st
     :type transformation: torch.nn.Module
     :param update_rate: Sets the :py:meth:`~.Area.update_rate` of this area.
     :type update_rate: float
     :param state_merge_strategy: Sets the :py:meth:`~.Area.state_merge_strategy` of this area.
     :type state_merge_strategy: callable, optional, defaults to None
-    :returns: A new area.
+    :return: A new area.
     :rtype: :py:class:`.Area`
     """
 
@@ -338,11 +342,17 @@ class Area(torch.nn.Module):
         self.output_time_frame_accumulator = output_time_frame_accumulator
         self.input_connections = input_connections
         self.output_connections = output_connections
-        self.transformation = transformation
+        
+        # Check input validity
+        if not isinstance(transformation, torch.nn.Module):
+            raise TypeError(f"The transformation of area {self.index} must be a torch.nn.Module object.")
+        
+        self._transformation = transformation # With torch, it is not possible to use the regular property setter/ getter, hence, the transformation is set once here manually and then kept private
+        
         self.update_rate = update_rate
         self._update_count = 0
         self.state_merge_strategy = state_merge_strategy
-        self.input_states = None
+        self._input_states = None # Will store the buffered input states updated by collect_inputs
 
     @property
     def index(self) -> int:
@@ -357,7 +367,7 @@ class Area(torch.nn.Module):
         if not isinstance(new_value, int):
             raise TypeError("The index must be an int.")
         if not new_value >= 0:
-            raise ValueError("The index must be non-negative.")
+            raise ValueError(f"The index must be non-negative but was set to {new_value}.")
         
         # Set property
         self._index = new_value
@@ -374,7 +384,7 @@ class Area(torch.nn.Module):
 
     @property
     def output_time_frame_accumulator(self) -> TimeFrameAccumulator:
-        """:return: The time-frame accumulator of this area. This holds the output state of the area which will be made available to other areas via connections.
+        """:return: The time-frame accumulator of this area. This holds the output state of the area which will be made available to other areas via :py:class:`.Connection`.
         :rtype: :py:class:`.TimeFrameAccumulator`"""
         return self._output_time_frame_accumulator
 
@@ -408,9 +418,6 @@ class Area(torch.nn.Module):
         if not all(isinstance(connection, Connection) for connection in new_value):
             raise TypeError(f"All values in the input_connections list of area {self.index} must be Connection objects projecting to area {self.index}.")
         
-        # Sort by from_area_index
-        new_value = sorted(new_value, key=lambda connection: connection.from_area_index)
-
         # Set property
         self._input_connections = new_value 
 
@@ -429,26 +436,19 @@ class Area(torch.nn.Module):
             raise TypeError(f"The output_connections for area {self.index} must be a list of :py:class:`.Connection` objects projecting from area {self.index}.")
         if not all(isinstance(connection, Connection) for connection in new_value):
             raise TypeError(f"All values in the output_connections list of area {self.index} must be Connection objects projecting from area {self.index}.")
-        
+        if 0 < len(new_value):
+            time_frame_accumulator = new_value[0].input_time_frame_accumulator
+            for connection in new_value[1:]:
+                if not connection.input_time_frame_accumulator == time_frame_accumulator:
+                    raise ValueError("When setting the output_connections of an area, they must all have the same input_time_frame_accumulator")  
+
         # Set property
         self._output_connections = new_value
-    '''
-    @property
-    def transformation(self) -> torch.nn.Module:
-        """:return: The transformation of this area. This should be a torch.nn.Module whose forward method accepts a torch.Tensor or a list of torch.Tensors, depending on the chosen :py:meth:`~.Area.state_merge_strategy`.
-        :rtype: torch.nn.Module"""
-        return self._transformation
-    
-    @transformation.setter
-    def transformation(self, new_value: torch.nn.Module) -> None:
 
-        # Check input validity
-        if not isinstance(new_value, torch.nn.Module):
-            raise TypeError(f"The transformation of area {self.index} must be a torch.nn.Module object.")
-        
-        # Set property
-        self._transformation = new_value
-    '''
+        # Set output_time_frame_accumulator
+        if 0 < len(new_value):
+            self._output_time_frame_accumulator = new_value[0].input_time_frame_accumulator
+    
     @property
     def update_rate(self) -> float:
         """:return: The update-rate of this area.
@@ -475,7 +475,7 @@ class Area(torch.nn.Module):
     
     @property
     def state_merge_strategy(self) -> callable:
-        """:return: The state merge strategy of this area.
+        """:return: The state-merge-strategy of this area. This is a function mapping from a <input area index, state tensor> dictionary to a single torch.nn.Tensor. It is used to combine the inputs to this area during :py:meth:`~.Area.collect_inputs`. If set to None, this function will not be used and the transformation of self needs to be able to process the dictionary of inputs. :py:class:`.Source` objects must not have a state-merge-strategy because they have no inputs.
         :rtype: callable"""
         return self._state_merge_strategy
 
@@ -491,19 +491,24 @@ class Area(torch.nn.Module):
         self._state_merge_strategy = new_value
 
     def collect_inputs(self, current_time: float) -> None:
-        """Calls the :py:meth:`~.Connection.forward` method of all incoming connections to get the current input.
+        """Calls the :py:meth:`~.Connection.forward` method of all incoming connections to get the current inputs, applies the :py:meth:`~.Area.state_merge_strategy`
+        of self (if not None) and buffers the result for later use by the :py:meth:`~.Area.forward` method.
+        
+        :param current_time: The current time of the simulation used to time-discount the states of the input areas.
+        :type current_time: float
+        :rtype: None
         """
 
         # Collect all inputs
-        self.input_states = [None] * (len(self.input_connections))
+        self._input_states = {}
         for i, connection in enumerate(self.input_connections):
-           self.input_states[i] = connection.forward(current_time=current_time).state
+           self._input_states[i] = connection.forward(current_time=current_time).state
             
         # Apply merge strategy
-        if self._state_merge_strategy != None: self.input_states = self._state_merge_strategy(states=self.input_states)
+        if self._state_merge_strategy != None: self._input_states = self._state_merge_strategy(self._input_states)
 
     def forward(self) -> None:
-        """Assuming :py:meth:`~.Area.collect_inputs` has been run on all areas just beforehand, this method passes that through
+        """Assuming :py:meth:`~.Area.collect_inputs` has been run on all areas of the simulation just beforehand, this method passes the buffered inputs through
         the `:py:meth:`~.Area.transformation` of self and passes the result to the :py:meth:`.TimeFrameAccumulator.accumulate` of self.
         """
 
@@ -512,13 +517,13 @@ class Area(torch.nn.Module):
         current_time = self._update_count / self.update_rate
 
         # Retrieve inputs
-        if self.input_states == None:
+        if self._input_states == None:
             raise ValueError(f"The input_states of area {self.index} are None. Please run collect_inputs() on all areas before calling forward().")
-        input_states = self.input_states
-        self.input_states = None
+        input_states = self._input_states
+        self._input_states = None
 
         # Apply transformation to the states
-        new_state = self.transformation.forward(input_states)
+        new_state = self._transformation.forward(input_states)
 
         # Create and accumulate a new time frame for the current state
         new_time_frame = TimeFrame(state=new_state, time_point=current_time)
@@ -702,6 +707,12 @@ class Source(Area):
             raise TypeError("The hold_function must be a Callable that takes as input a tensor which is equal to the state of the last TimeFrame object generated from the input to the simulation.")
         self._hold_function = new_value
 
+    @Area.state_merge_strategy.setter
+    def state_merge_strategy(self, new_value: callable) -> None:
+        
+        if new_value != None:
+            raise ValueError("Sources must not have a state_merge_strategy")
+
     @property
     def stimulus_batch(self) -> Deque[TimeFrame]:
         """The stimuli that are currently loaded in the source area. This is a deque of :py:class:`.TimeFrame` objects that are to be processed by the model.
@@ -729,11 +740,15 @@ class Source(Area):
         self._stimulus_batch = Deque([])
         time_frame_count = X.shape[1]
         for t in range(time_frame_count):
-            time_frame = TimeFrame(state=X[:,t,:], time_point = (t+1)/self.update_rate)
+            time_frame = TimeFrame(state=X[:,t,:], time_point = (t)/self.update_rate)
             self._stimulus_batch.appendleft(time_frame)
 
         # Reset the remaining cool down duration
         self._remaining_cool_down_duration = self._cool_down_duration
+
+        # Load first time-frame
+        self._update_count = self.update_count - 1 # This will be incremented again in the forward method and then the first data point corresponds to the default update count
+        self.forward()
 
     def collect_inputs(self, current_time: float) -> None:
         pass
@@ -963,7 +978,7 @@ class BrIANN(torch.nn.Module):
             
             # Extract initial state
             global initial_state
-            exec("global initial_state; initial_state = " + area_configuration["initial_state"]) # Is a single tensor disregarding the batch-size
+            exec("global initial_state; initial_state = " + area_configuration["initial_state"]) # This is a single tensor that is disregarding the batch-size
             
             if not isinstance(initial_state, torch.Tensor):
                 raise TypeError(f"Expected initial_state to be a torch.Tensor, but received {type(initial_state)}.")
@@ -1079,11 +1094,13 @@ class BrIANN(torch.nn.Module):
         # Output
         return G
 
-    def start_next_trial_batch(self,) -> None:
-        """Starts the simulation of a batch of trials.
-        This method resets the :py:meth:`.~BrIANN.current_simulation_time` and all areas. It also makes the :py:class:`.Source` areas
-        loads their corresponding next batch of stimuli. It thus assumes that all source areas have a valid :py:meth:`~.Source.data_loader` set
-        and that the data loaders are not empty and in sync with each other.
+    def load_next_stimulus_batch(self) -> None:
+        """This method resets the :py:meth:`.~BrIANN.current_simulation_time` and all areas. It also makes the :py:class:`.Source` areas
+        load their corresponding next batch of stimuli. It thus assumes that all source areas have a valid :py:meth:`~.Source.data_loader` set
+        and that the data loaders are in sync with each other and non-empty.
+
+        :raises StopIteration: If a :py:meth:`.Source.data_loader` reached its end.
+        :rtype: None
         """
         
         # Reset the simulation time
