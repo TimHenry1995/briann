@@ -11,10 +11,9 @@ import sys, os
 sys.path.append(os.path.abspath(""))
 from src.briann.python.network import components as bpnc
 from src.briann.python.training import data_management as bptdm
-import networkx as nx
-from customtkinter import filedialog    
+import networkx as nx   
 import tkinter as tk
-from typing import List, Tuple
+from typing import Set, Tuple
 from CTkMenuBar import *
 import json, torch
 from src.briann.python.utilities import utilities as bpuu
@@ -117,8 +116,8 @@ class ControllerFrame(customtkinter.CTkFrame):
         print("Play button clicked")
 
     def on_next_time_frame_button_click(self):
-        self._briann.step()
-        self.master.canvas.network_visualizer.update()
+        updated_areas = self._briann.step()
+        self.master.canvas.network_visualizer.update(updated_areas = updated_areas)
         self.master.time_label.configure(text=f"Time: {self._briann.current_simulation_time:.3f} s")
         
     def on_last_time_frame_button_click(self):
@@ -384,11 +383,10 @@ class DraggableWidget():
         # Update initial position
         self._initial_x, self._initial_y = self._x, self._y
 
-class Area(DraggableWidget):
+class Area(DraggableWidget, bpnc.AreaStateSubscriber):
     
     def __init__(self, area: bpnc.Area, canvas: Canvas, x: float, y: float, size: float) -> "Area":
         """x, y, and size are in inches"""
-
 
         # Set properties
         self._size = size
@@ -468,6 +466,10 @@ class Area(DraggableWidget):
             StateVisualizerLineChart(area=self.area, initial_x=self.x, initial_y=self.y, width=3, height=2, canvas=self.canvas)
         popup.destroy()
         
+
+    def on_state_update(self, area_index: int, time_frame: bpnc.TimeFrame) -> None:
+        pass
+
 class Connection():
     
     def __init__(self, connection: bpnc.Connection, from_area: Area, to_area: Area, canvas: Canvas, thickness: float = 2.0, bend_by: float = 0.0) -> "Connection":
@@ -574,7 +576,7 @@ class NetworkVisualizer():
         # Override the drag functions from super to extend it to all child widgets
 
         # Compute positions
-        G = self.briann.to_simple_networkx()
+        G = self.briann.get_topology()
         area_to_position = nx.shell_layout(G=G, center=(0,0))
 
         # Convert from G space to canvas space
@@ -605,10 +607,9 @@ class NetworkVisualizer():
             self.area_to_drawable[u].add_subscriber(self.edge_to_drawable[u.index, v.index])
             self.area_to_drawable[v].add_subscriber(self.edge_to_drawable[u.index, v.index])
         
-    def update(self):
+    def update(self, updated_areas: Set[bpnc.Area]):
         for area, drawable in self.area_to_drawable.items():
-            if area in self._briann._due_areas:
-                drawable.display_as_active()
+            if area in updated_areas: drawable.display_as_active()
             else: drawable.display_as_inactive()
             
     @property
@@ -641,7 +642,7 @@ class StateVisualizer(DraggableWidget, bpnc.AreaStateSubscriber):
         self.update_plot(time_frame=None) # Initialization
         self.update_plot(time_frame = area.output_time_frame_accumulator.time_frame(current_time=canvas.master._briann.current_simulation_time)) # Draw current time frame
         
-    def receive_state(self, area_index: int, time_frame: bpnc.TimeFrame) -> None:
+    def on_state_update(self, area_index: int, time_frame: bpnc.TimeFrame) -> None:
         plt.figure(self.figure.number)
         self.update_plot(time_frame=time_frame)
 

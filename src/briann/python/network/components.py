@@ -404,41 +404,41 @@ class Area(torch.nn.Module):
                 connection.input_time_frame_accumulator = new_value
 
     @property
-    def input_connections(self) -> List[Connection]:
-        """:return: A list of :py:class:`.Connection` objects projecting to this area.
-        :rtype: List[Connection]
+    def input_connections(self) -> Set[Connection]:
+        """:return: A set of :py:class:`.Connection` objects projecting to this area.
+        :rtype: Set[Connection]
         """
         return self._input_connections
 
     @input_connections.setter
-    def input_connections(self, new_value: List[Connection]) -> None:
+    def input_connections(self, new_value: Set[Connection]) -> None:
         # Check input validity
-        if not isinstance(new_value, List):
-            raise TypeError(f"The input_connections for area {self.index} must be a list of :py:class:`.Connection` objects projecting to area {self.index}.")
+        if not isinstance(new_value, Set):
+            raise TypeError(f"The input_connections for area {self.index} must be a set of :py:class:`.Connection` objects projecting to area {self.index}.")
         if not all(isinstance(connection, Connection) for connection in new_value):
-            raise TypeError(f"All values in the input_connections list of area {self.index} must be Connection objects projecting to area {self.index}.")
+            raise TypeError(f"All values in the input_connections set of area {self.index} must be Connection objects projecting to area {self.index}.")
         
         # Set property
         self._input_connections = new_value 
 
     @property
-    def output_connections(self) -> List[Connection]:
-        """:return: A list of :py:class:`.Connection` objects projecting from this area. 
-        :rtype: List[Connection]
+    def output_connections(self) -> Set[Connection]:
+        """:return: A set of :py:class:`.Connection` objects projecting from this area. 
+        :rtype: Set[Connection]
         """
         return self._output_connections
 
     @output_connections.setter
-    def output_connections(self, new_value: List[Connection]) -> None:
+    def output_connections(self, new_value: Set[Connection]) -> None:
 
         # Check input validity
-        if not isinstance(new_value, List):
-            raise TypeError(f"The output_connections for area {self.index} must be a list of :py:class:`.Connection` objects projecting from area {self.index}.")
+        if not isinstance(new_value, Set):
+            raise TypeError(f"The output_connections for area {self.index} must be a set of :py:class:`.Connection` objects projecting from area {self.index}.")
         if not all(isinstance(connection, Connection) for connection in new_value):
-            raise TypeError(f"All values in the output_connections list of area {self.index} must be Connection objects projecting from area {self.index}.")
+            raise TypeError(f"All values in the output_connections set of area {self.index} must be Connection objects projecting from area {self.index}.")
         if 0 < len(new_value):
-            time_frame_accumulator = new_value[0].input_time_frame_accumulator
-            for connection in new_value[1:]:
+            time_frame_accumulator = list(new_value)[0].input_time_frame_accumulator
+            for connection in list(new_value)[1:]:
                 if not connection.input_time_frame_accumulator == time_frame_accumulator:
                     raise ValueError("When setting the output_connections of an area, they must all have the same input_time_frame_accumulator")  
 
@@ -447,7 +447,7 @@ class Area(torch.nn.Module):
 
         # Set output_time_frame_accumulator
         if 0 < len(new_value):
-            self._output_time_frame_accumulator = new_value[0].input_time_frame_accumulator
+            self._output_time_frame_accumulator = list(new_value)[0].input_time_frame_accumulator
     
     @property
     def update_rate(self) -> float:
@@ -548,33 +548,17 @@ class Area(torch.nn.Module):
         if hasattr(self, "_subscribers"):
             new_time_frame = self._output_time_frame_accumulator.time_frame(current_time=0.0)
             for subscriber in self._subscribers:
-                subscriber.receive_state(area_index=self.index, time_frame=new_time_frame)
+                subscriber.on_state_update(area_index=self.index, time_frame=new_time_frame)
 
-    
-    def add_state_subscriber(self, subscriber: Any) -> None:
-        """Adds a subscriber to the area. The subscriber must have a method `receive_state(area_index: int, time_frame: TimeFrame)` that will be called every time the area is updated.
+    def add_state_subscriber(self, subscriber: "AreaStateSubscriber") -> None:
+        """Adds a subscriber to the area whose :py:meth:`~.AreaStateSubscriber.on_state_update` method will be called every time the area's :py:meth:`~.Area.forward` is called.
 
         :param subscriber: The subscriber to be added.
-        :type subscriber: Any
+        :type subscriber: :py:class:`AreaStateSubscriber`
         """
 
-        if not hasattr(subscriber, "receive_state"):
-            raise ValueError("The subscriber must have a method receive_state(area_index: int, time_frame: TimeFrame).")
-        
-        if not callable(subscriber.receive_state):
-            raise ValueError("The receive_state attribute of the subscriber must be callable.")
-        
-        if not len(subscriber.receive_state.__code__.co_varnames) == 3:
-            raise ValueError("The receive_state method of the subscriber must have exactly two parameters: area_index: int and time_frame: TimeFrame.")
-        
-        if not subscriber.receive_state.__code__.co_varnames[1] == "area_index":
-            raise ValueError("The first parameter of the receive_state method of the subscriber must be named area_index.")
-        
-        if not subscriber.receive_state.__code__.co_varnames[2] == "time_frame":
-            raise ValueError("The second parameter of the receive_state method of the subscriber must be named time_frame.")
-        
-        if not subscriber.receive_state.__code__.co_argcount == 3:
-            raise ValueError("The receive_state method of the subscriber must have exactly two parameters: area_index: int and time_frame: TimeFrame.")
+        if not isinstance(subscriber, AreaStateSubscriber):
+            raise TypeError("The subscriber to an Area's state change must be an AreaStateSubscriber.")
         
         if not hasattr(self, "_subscribers"):
             self._subscribers = []
@@ -590,11 +574,11 @@ class AreaStateSubscriber(ABC):
     """
 
     @abstractmethod
-    def receive_state(self, area_index: int, time_frame: TimeFrame) -> None:
-        """This method will be called every time the area is updated. The subscriber can then process the received state as desired.
+    def on_state_update(self, area: Area, time_frame: TimeFrame) -> None:
+        """This method will be called every time the area's :py:meth:`~.Area.forward` method is called. The subscriber can then process the received state as desired.
 
-        :param area_index: The index of the area that was updated.
-        :type area_index: int
+        :param area: The area that was updated.
+        :type area: :py:class:`~.Area`
         :param time_frame: The time frame that was produced by the area.
         :type time_frame: TimeFrame
         """
@@ -624,7 +608,7 @@ class Source(Area):
         # Call the parent constructor
         super().__init__(index=index,
                          output_time_frame_accumulator=output_time_frame_accumulator,
-                         input_connections=[],
+                         input_connections=set([]),
                          output_connections=output_connections,
                          transformation=torch.nn.Identity(),
                          update_rate=update_rate)
@@ -697,7 +681,7 @@ class Source(Area):
         self.forward()
 
     def collect_inputs(self, current_time: float) -> None:
-        """Pops the next :py:class:`.TimeFrame` from :py:meth:`~.Source.stimulus_batch` or generates an array of zeros if the stimulus stream is over. Either way, the result is buffered internally to be made available upon calling :py:meth:`~.Area.forward`.
+        """Pops the next :py:class:`.TimeFrame` from :py:meth:`~.Source.stimulus_batch` or generates an array of zeros if the stimulus stream is over. Either way, the result is buffered internally to be made available to other areas upon calling :py:meth:`~.Area.forward`.
         
         :param current_time: The current time of the simulation.
         :type current_time: float
@@ -718,10 +702,10 @@ class Source(Area):
         else:
             # No more time-frames to pop, simply create array of zeros to be added to the output time-frame accumulator in forward()
             current_time_frame = self.output_time_frame_accumulator.time_frame(current_time=current_time)
-            self._input_states = torch.zeros_like(current_time_frame)
+            self._input_states = torch.zeros_like(current_time_frame.state)
 
 class Target(Area):
-    """This class is an subclass of :py:class:`.Area` and has the same functionality as a regular area except that it has no output connections.
+    """This class is a subclass of :py:class:`.Area` and has the same functionality as a regular area except that it has no output connections.
 
     :param index: Sets the :py:attr:`~.Area.index` of this area.
     :type index: int
@@ -746,18 +730,27 @@ class Target(Area):
         super().__init__(index=index, 
                  output_time_frame_accumulator=output_time_frame_accumulator, 
                  input_connections=input_connections, 
-                 output_connections=[],
+                 output_connections=None,
                  transformation=transformation, 
                  update_rate=update_rate, 
                  state_merge_strategy=state_merge_strategy)
      
+    @Area.output_connections.setter
+    def output_connections(self, new_value: List[Connection]) -> None:
+        if new_value != None:
+            raise ValueError("A Target area does not accept any output connections.")
+
 class BrIANN(torch.nn.Module):
     """This class functions as the network that holds together all its :py:class:`.Area`s and :py:class:`.Connection`s. Its name abbreviates Brain Inspired Artificial Neural Networks. 
-
-    :param batch_size: The batch size used when passing instances through the areas.
-    :type batch_size: int
+    To use it, one should provide a configuration dictionary from which all components can be loaded. 
+    Then, for each batch, one should call :py:meth:`~.BrIANN.load_next_stimulus_batch`.
+    Once a batch is loaded, the processing can be simulated for as long as the caller intends (ideally at least for as long as the
+    :py:class:`~.Source` areas provide :py:class:`.TimeFrame`s) using the :py:meth:`~.BrIANN.step` method.
+    In order to get a simplified networkx representation which contains information about the large-scale network topology (:py:class:`.Area`s and :py:class:`.Connection`s),
+    one can use :py:meth:`~.BrIANN.get_topology`.
+    
     :param configuration: A configuration in the form of a dictionary.
-        :type configuration: Dict[str, Any]
+    :type configuration: Dict[str, Any]
     """
     
     def __init__(self, configuration: Dict[str,Any]) -> "BrIANN":
@@ -771,31 +764,22 @@ class BrIANN(torch.nn.Module):
         # Set the time of the simulation
         self._current_simulation_time = 0.0
 
-        # Set next areas 
-        self._due_areas = []
-
     @property
     def areas(self) -> Set[Area]:
-        """The set of areas held by self.
-
-        :return: The set of areas held by self.
+        """:return: The set of areas held by self.
         :rtype: Set[:py:class:`.Area`]
         """
 
         return self._areas
 
-    def get_area_indices(self) -> List[int]:
-        """Returns the list of indices of the areas stored internally.
-
-        :return: The list of indices.
-        :rtype: List[int]
+    def get_area_indices(self) -> Set[int]:
+        """:return: The set of indices of the areas stored internally.
+        :rtype: Set[int]
         """
-        return [area.index for area in self._areas]
+        return set([area.index for area in self._areas])
     
     def get_area_at_index(self, index: int) -> Area:
-        """Returns the area with given `index`.
-
-        :return: The area with given `index`.
+        """:return: The area with given `index`.
         :rtype: :py:class:`.Area`
         :raises ValueError: If self does not store an area of given `index`
         """
@@ -813,19 +797,15 @@ class BrIANN(torch.nn.Module):
         return result
     
     @property
-    def connections(self) -> Dict[int, Connection]:
-        """A dictionary where each key is an area index and each value is a :py:class:`.Connection`.
-        
-        :return: The dictionary of :py:class:`.Connection`s .
-        :rtype: Dict[int, :py:class:`.Connection`]
+    def connections(self) -> Set[Connection]:
+        """:return: The set of internally stored :py:class:`.Connection`.
+        :rtype: Set[:py:class:`.Connection`]
         """
         return self._connections
     
-    def connections_from(self, area_index: int) -> List[Connection]:
-        """A list of :py:class:`.Connection` objects that are the output connections of the area with the given index. 
-        
-        :return: The list of output connections.
-        :rtype: List[:py:class:`.Connection`]
+    def get_connections_from(self, area_index: int) -> Set[Connection]:
+        """:return: A set of :py:class:`.Connection` objects that are the output connections of the area with the given index. 
+        :rtype: Set[:py:class:`.Connection`]
         """
 
         # Compile
@@ -837,13 +817,11 @@ class BrIANN(torch.nn.Module):
                 i += 1
 
         # Output
-        return result[:i]
+        return set(result[:i])
         
-    def connections_to(self, area_index: int) -> List[Connection]:
-        """A list of :py:class:`.Connection` objects that are the input connections to the area with the given index. 
-        
-        :return: The selistt of input connections.
-        :rtype: List[:py:class:`.Connection`]
+    def get_connections_to(self, area_index: int) -> Set[Connection]:
+        """:return: A set of :py:class:`.Connection` objects that are the input connections to the area with the given index. 
+        :rtype: Set[:py:class:`.Connection`]
         """
 
         # Compile
@@ -855,19 +833,18 @@ class BrIANN(torch.nn.Module):
                 i += 1
 
         # Output
-        return result[:i]
+        return set(result[:i])
     
     @property
     def current_simulation_time(self) -> float:
-        """The current simulation time in seconds. This is the time that has passed since the start of the simulation. It is updated after each step of the simulation.
-        
-        :return: The current simulation time.
+        """:return: The time that has passed since the start of the simulation. It is updated after each step of the simulation.
         :rtype: float
         """
         return self._current_simulation_time
 
     def _load_from_configuration(self, configuration: Dict[str, Any]) -> None:
-        """Loads the configuration from the given **json_string** and sets up the areas and connections.
+        """Loads the overall network, including the :py:class:`.Area`s and :py:class:`.Connection`s as well as
+        the torch.data.utils.DataLoaders.
         
         :param configuration: A configuration in the form of a dictionary.
         :type configuration: Dict[str, Any]
@@ -945,9 +922,9 @@ class BrIANN(torch.nn.Module):
             # Enrich configuration
             area_index = area_configuration["index"]
 
-            if area_configuration["type"] != "Source": area_configuration["input_connections"] = self.connections_to(area_index=area_index)
+            if area_configuration["type"] != "Source": area_configuration["input_connections"] = self.get_connections_to(area_index=area_index)
             area_configuration["output_time_frame_accumulator"] = time_frame_accumulators[area_index]
-            if area_configuration["type"] != "Target": area_configuration["output_connections"] = self.connections_from(area_index=area_index)
+            if area_configuration["type"] != "Target": area_configuration["output_connections"] = self.get_connections_from(area_index=area_index)
 
             if "hold_function" in area_configuration.keys(): 
                 global hold_function
@@ -992,11 +969,8 @@ class BrIANN(torch.nn.Module):
 
             # Store
             self._areas.add(area)
-            
-        # Set flag to indicate that all states are reset
-        self._all_areas_reset = True
-
-    def to_simple_networkx(self) -> nx.DiGraph:
+           
+    def get_topology(self) -> nx.DiGraph:
         """Converts the BrIANN network to a NetworkX DiGraph where each node is simply the :py:meth:`~.Area.index` of a corresponding :py:class:`.Area`
         and each edge is simply the triplet (*u*,*v*) where *u* is the :py:meht:`~Connection.from_index`, *v* the :py:meht:`~Connection.to_index` of the corresponding :py:class:`.Connection`.
         
@@ -1035,50 +1009,54 @@ class BrIANN(torch.nn.Module):
         self._current_simulation_time = 0.0
 
         # Reset the states of all areas
-        if not self._all_areas_reset:
-            for area in self._areas:
-                area.reset()
-            self._all_areas_reset = True
+        for area in self.areas:
+            area.reset()
 
         # Load the next batch of stimuli into the source areas
         for area in self.areas:
             if isinstance(area, Source):
                 area.load_next_stimulus_batch()
 
-    def step(self) -> None:
-        """Performs one step of the simulation by processing the next :py:class:`.TimeFrame` from the source areas and passing it through the areas.
-        This method needs to be called repeatedly to step through the simulation. The stimulation does not have an internally checked stopping condition,
-        meaning it will simply continue running, even if the stimuli ran out. The caller of this method thus needs to determine when to stop the simulation.
+    def step(self) -> Set[Area]:
+        """Performs one step of the simulation by finding the set of areas due to be updated next and calling their :py:meth:`~.Area.collect_inputs` and
+        :py:meth:`~.Area.forward` method to make them process their inputs. 
+        This method needs to be called repeatedly to step through the simulation. The simulation does not have an internally checked stopping condition,
+        meaning this step method can be called indefinitely, even if the sources already ran out of stimuli. 
+        The caller of this method thus needs to determine when to stop the simulation.
 
-        :rtype: None
+        :return: The set of areas that were updated within this step.
+        :rtype: Set[:py:class:`~.Area`]
         """
         
         # Find the areas that are due next
-        self._due_areas = set([])
+        due_areas = set([])
         min_time = sys.float_info.max
         for area in self._areas:
             area_next_time = (area.update_count +1) / area.update_rate # Add 1 to get the time of the area's next frame 
             if area_next_time == min_time: # Current area belongs to current set of due areas
-                self._due_areas.add(area)
+                due_areas.add(area)
             elif area_next_time < min_time: # Current area is due sooner 
-                self._due_areas = set([area])
+                due_areas = set([area])
                 min_time = area_next_time
             
         # Update the simulation time
         self._current_simulation_time = min_time
 
         # Make all areas collect their inputs
-        for area in self._due_areas: area.collect_inputs(current_time=self._current_simulation_time)
+        for area in due_areas: area.collect_inputs(current_time=self._current_simulation_time)
 
         # Make all areas process their inputs
-        for area in self._due_areas: area.forward()
+        for area in due_areas: area.forward()
+
+        # Outputs
+        return due_areas
 
     def __repr__(self) -> str:
         string = "BrIANN\n"
 
-        for area in self._areas.values(): 
+        for area in self._areas: 
             string += f"{area}\n"
-            for connection in self._connection_from[area.index]:
+            for connection in self.get_connections_from(area_index=area.index):
                 string += f"\t{connection}\n"
 
         return string

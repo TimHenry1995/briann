@@ -2,7 +2,7 @@
     "network":
     {
         "name": "BrIANN 1",
-        "decay_rate": 0.9,
+        "decay_rate": 0.1,
         "batch_size": 16
     },
     "connections":
