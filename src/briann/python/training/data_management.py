@@ -7,7 +7,7 @@ from typing import Tuple
 import torch
 from torch.utils.data import Dataset, DataLoader
 from typing import List
-from src.briann.python.utilities import utilities as bpuu
+from src.briann.python.utilities import file_management as bpufm
 
 def collate_function(sequences: List[Tuple[torch.Tensor, torch.Tensor]], **kwargs) -> Tuple[torch.Tensor, torch.Tensor]:
     """Collate function to pad sequences to the same length.
@@ -162,7 +162,7 @@ class PenStrokeMNIST(Dataset):
         return x,y
 
 if __name__=="__main__":
-    path = bpuu.map_path_to_os(path=os.path.join("tests","data","Pen Stroke MNIST"))
+    path = bpufm.map_path_to_os(path=os.path.join("tests","data","Pen Stroke MNIST"))
     dataset = PenStrokeMNIST(folder_path=path)
     #dataset = Sinusoids(instance_count=10, duration=3.0, sampling_rate=50, frequency_count=2, noise_range=0.02)
     data_loader = DataLoader(dataset, batch_size=3, collate_fn=lambda sequences: collate_function(sequences=sequences, batch_first=True))

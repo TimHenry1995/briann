@@ -1,10 +1,10 @@
-from collections import deque
-from matplotlib.figure import Figure 
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk) 
+from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg) 
 import tkinter as tk
 import customtkinter
 import numpy as np
+
+from briann.python.utilities import callbacks as bpuc
 customtkinter.set_appearance_mode("Light")  # Modes: "System" (standard), "Dark", "Light"
 customtkinter.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
 import sys, os
@@ -13,144 +13,189 @@ from src.briann.python.network import components as bpnc
 from src.briann.python.training import data_management as bptdm
 import networkx as nx   
 import tkinter as tk
-from typing import Set, Tuple
+from typing import Tuple, List
 from CTkMenuBar import *
-import json, torch
-from src.briann.python.utilities import utilities as bpuu
+import json
+from src.briann.python.utilities import file_management as bpufm
+import threading, time
+from abc import ABC, abstractmethod
 
-def get_dpi():
-    # Create a hidden root window
-    root = tk.Tk()
-    root.withdraw()  # Hide the root window
-
-    # Get the DPI
-    dpi = root.winfo_fpixels('1i')  # '1i' means 1 inch
-    root.destroy()  # Destroy the hidden window
-    return dpi
+# Get the DPI
+root = tk.Tk()
+root.withdraw()  # Hide the root window
+DPI = root.winfo_fpixels('1i')  # '1i' means 1 inch
+root.destroy()  # Destroy the hidden window
 
 class Animator(customtkinter.CTk):
+    """This class can be used to animate :py:class:`~src.briann.python.components.BrIANN`s. The animator displays a graph for the different :py:class:`~src.briann.python.components.Area`s and :py:class:`~src.briann.python.components.Connections`s.
+    The layout of the graph can be adjusted with mouse-clicks inside the animator. It is also possible to add visualisations for area states by right-clicking the areas. 
+    When stepping through the simulation, the animator indicates with a color-code which area is currently processing its inputs and updates to their states are displayed in the corresponding visualizers.
+    
+    :param briann: The briann instance to be animated.
+    :type briann: :py:class:`~src.briann.python.components.BrIANN`
+    :rtype: :py:class:`.Animator`
+    """
 
     @property
     def briann(self):
+        """:return: The briann instance that is being animated.
+        :rtype: :py:class:`~.Animator`"""
+
         return self._briann
 
-    @property
-    def selected_area(self):
-        return self._selected_area
-    
-    @selected_area.setter
-    def selected_area(self, new_value):
-        # Ensure input validity
-        if (not new_value == None) and (not isinstance(new_value, bpnc.Area)): raise TypeError(f"The selected area was expected to be of type Area but was {type(new_value)}.")
-        
-        # Set property
-        self._selected_area = new_value
-
-    def __init__(self, briann: bpnc.BrIANN):
+    def __init__(self, briann: bpnc.BrIANN) -> "Animator":
         # Call super
         super().__init__()
         
-        # Set properties
-        self._briann = briann
-        self.selected_area = None
-
         # Start simulation
-        self.briann.load_next_stimulus_batch()
+        briann.load_next_stimulus_batch()
 
         # Configure window
         self.title("BrIANN Animator")
-        self.dpi = get_dpi()
-        self.geometry(f"{(int)(18*self.dpi)}x{(int)(10*self.dpi)}")
+        self.geometry(f"{(int)(18*DPI)}x{(int)(10*DPI)}")
 
-        # Controller
-        self.controller_frame = ControllerFrame(briann=briann, master=self, corner_radius=0)
-        self.controller_frame.pack(fill='x', expand=False, side=tk.BOTTOM)
-        
         # Canvas
-        self.canvas = Canvas(briann=briann, master=self, xscrollincrement=1, yscrollincrement=1)
-        self.canvas.pack(expand=True, fill='both')
+        canvas = Canvas(master=self, xscrollincrement=1, yscrollincrement=1)
+        canvas.pack(expand=True, fill='both')
+        self._briann = briann
         
+        # Network Visualizer
+        network_visualizer = NetworkVisualizer(briann=briann, canvas=canvas, initial_x=0.0, initial_y=0.0, width=4, height=4, area_size=0.5)
+
         # Time Label
-        self.time_label = customtkinter.CTkLabel(self.canvas, text=f"Time: {self.briann.current_simulation_time:.3f} s", anchor=tk.CENTER, font=("Arial", 16))
-        self.time_label.place(relx=0.5, rely=0.01, anchor=tk.N)
+        self._time_label = customtkinter.CTkLabel(canvas, text=f"Time: {briann.current_simulation_time:.3f} s", anchor=tk.CENTER, font=("Arial", 16))
+        self._time_label.place(relx=0.5, rely=0.01, anchor=tk.N)
+
+        # Add self as subscriber for briann simulation time
+        bpuc.CallbackManager.add_callback_to_attribute(target_class=bpnc.BrIANN, target_instance=briann, attribute_name='_current_simulation_time', callback=self.on_current_simulation_time_update)
+        
+        # Controller
+        controller_frame = ControllerFrame(briann=briann, network_visualizer=network_visualizer, master=self, corner_radius=0)
+        controller_frame.pack(fill='x', expand=False, side=tk.BOTTOM)
         
         # Quit handler
-        self.protocol('WM_DELETE_WINDOW', self._on_close_window)  # root is your root window
-
-    def _on_close_window(self):
+        self.protocol(name='WM_DELETE_WINDOW', func=self._on_window_close) 
+    
+    def on_current_simulation_time_update(self, obj, name, value) -> None:
         
+        # Set time-label
+        self._time_label.configure(text=f"Time: {value:.3f} s")
+        
+    def _on_window_close(self) -> None:
+        """Ensures the animator closes all visualizations properly before quitting the app.
+        :rtype: None"""
+
         # Close all matplotlib figures to prevent errors
         plt.close('all')  
         self.after(50, self.destroy)
-        
-class ControllerFrame(customtkinter.CTkFrame):
 
-    def __init__(self, briann: bpnc.BrIANN, **kwargs):
+class ControllerFrame(customtkinter.CTkFrame):
+    """A frame that holds the different buttons used to control the animation.
+    
+    :param briann: The briann instance for which the animation shall be controlled.
+    :type briann: :py:class:`~.src.briann.python.components.BrIANN`
+    :param network_visualizer: The visualizer that displays the current state of `briann`.
+    :type network_visualizer: :py:class:`~.NetworkVisualizer`
+    returns: An instance of this class.
+    :rtype: :py:class:`.ControllerFrame`
+    """
+
+    def __init__(self, briann: bpnc.BrIANN, network_visualizer: "NetworkVisualizer", **kwargs) -> "ControllerFrame":
         
         # Super
         super().__init__(**kwargs)
 
-        # Set proeprties
-        self._briann = briann
-        self.dpi = get_dpi()
-
-        # Create widgets
-        customtkinter.CTkButton(self, text="Previous Stimulus", command=self.on_previous_stimulus_button_click).pack(expand=True, side=tk.LEFT, padx=10, pady=10)
-        customtkinter.CTkButton(self, text="First Time-Frame", command=self.on_first_time_frame_button_click).pack(expand=True, side=tk.LEFT,  padx=10, pady=10)
-        customtkinter.CTkButton(self, text="Previous Time-Frame", command=self.on_previous_time_frame_button_click).pack(expand=True, side=tk.LEFT,  padx=10, pady=10)
-        customtkinter.CTkButton(self, text="Play", command=self.on_play_button_click).pack(expand=True, side=tk.LEFT, padx=10, pady=10)
-        customtkinter.CTkButton(self, text="Next Time-Frame", command=self.on_next_time_frame_button_click).pack(expand=True, side=tk.LEFT, padx=10, pady=10)
-        customtkinter.CTkButton(self, text="Last Time-Frame", command=self.on_last_time_frame_button_click).pack(expand=True, side=tk.LEFT, padx=10, pady=10)
-        customtkinter.CTkButton(self, text="Next Stimulus", command=self.on_next_stimulus_button_click).pack(expand=True, side=tk.LEFT, padx=10, pady=10)
-        
-    def on_previous_stimulus_button_click(self):
-        print("Previous stimulus button clicked")
-
-    def on_first_time_frame_button_click(self):
-        print("Reset time button clicked")
-
-    def on_previous_time_frame_button_click(self):
-        print("Previous time frame button clicked")
-
-    def on_play_button_click(self):
-        print("Play button clicked")
-
-    def on_next_time_frame_button_click(self):
-        updated_areas = self._briann.step()
-        self.master.canvas.network_visualizer.update(updated_areas = updated_areas)
-        self.master.time_label.configure(text=f"Time: {self._briann.current_simulation_time:.3f} s")
-        
-    def on_last_time_frame_button_click(self):
-        print("Next time frame button clicked")
-
-    def on_next_stimulus_button_click(self):
-        self._briann.load_next_stimulus_batch()
-      
-class Canvas(tk.Canvas):
-
-    def __init__(self, briann: bpnc.BrIANN, **kwargs):
-        super().__init__(**kwargs)
-
         # Set properties
         self._briann = briann
-        self.dpi = get_dpi()
+        self._network_visualizer = network_visualizer
+        self._is_playing = False
+
+        # Create buttons
+        self._play_button = customtkinter.CTkButton(self, text="Play", command=self._on_play_button_click)
+        self._play_button.pack(expand=True, side=tk.LEFT, padx=0, pady=10, anchor=tk.CENTER)
+        customtkinter.CTkButton(self, text="Pause", command=self._on_pause_button_click).pack(expand=True, side=tk.LEFT, padx=0, pady=10, anchor=tk.CENTER)
+        customtkinter.CTkButton(self, text="Next Time-Frame", command=self.on_next_time_frame_button_click).pack(expand=True, side=tk.LEFT, padx=0, pady=10, anchor=tk.CENTER)
+        customtkinter.CTkButton(self, text="Next Stimulus", command=self.on_next_stimulus_button_click).pack(expand=True, side=tk.LEFT, padx=0, pady=10, anchor=tk.CENTER)
         
-        # Add visualizers
+    def _on_play_button_click(self) -> None:
+        """Starts a loop that steps through the animation until stopped via :py:meth:`~.ControllerFrame._on_pause_button_click`.
+        :rtype: None"""
+
+        # Set property
+        self._is_playing = True
+
+        # Start loop on separate thread
+        threading.Thread(target=self._play).start()
+
+        # Disable button
+        self._play_button.configure(state='disabled')
+        
+    def _play(self) -> None:
+        """Steps through the animation for as long as :py:attr:`~Canvas._is_playing` is True.
+        :rtype: None"""
+
+        # Loop
+        while self._is_playing:
+
+            # Step
+            self.on_next_time_frame_button_click()
+
+            # Wait
+            time.sleep(1)
+
+    def _on_pause_button_click(self) -> None:
+        """Halts the animation, in case it is currently running.
+        :rtype: None"""
+
+        # Set property
+        self._is_playing = False
+
+        # Enable button
+        self._play_button.configure(state='normal')
+
+    def on_next_time_frame_button_click(self) -> None:
+        """Loads the next :py:class:`~src.briann.python.components.TimeFrame` into the :py:class:`~src.briann.python.components.BrIANN` model.
+        :rtype: None"""
+
+        # Step
+        self._briann.step() # The area state subscribers will automatically update the UI
+        
+    def on_next_stimulus_button_click(self) -> None:
+        """Loads the next stimulus into the :py:class:`~src.briann.python.components.BrIANN` model.
+        :rtype: None"""
+
+        # Ensure current simulation is paused
+        self._is_playing = False
+
+        # Load next stimulus
+        self._briann.load_next_stimulus_batch()
+
+        # Reset area colors
+        for area in self._network_visualizer.area_to_drawable.values():
+            area.on_current_simulation_time_update(obj=None, name=None, value=None)
+
+class Canvas(tk.Canvas):
+    """This class creates a canvas on which network components will be displayed. The canvas can be dragged around and has a reference grid in the background.
+    
+    :return: An instance of this class.
+    :rtype: :py:class:`Canvas`
+    """
+
+    def __init__(self, **kwargs) -> "Canvas":
+        super(Canvas, self).__init__(**kwargs)
+        
+        # Add reference grid
         self.create_reference_grid(x_min=-15, x_max=15, y_min=-15, y_max=15, spacing=1.0)
-        #self.create_cross(x=0, y=0, size=0.5)
-        self.network_visualizer = NetworkVisualizer(briann=briann, canvas=self, initial_x=0.0, initial_y=0.0, width=4, height=4, area_size=0.5)
         
         self._drag_start_x = None; self._drag_start_y = None # For panning
-        self.bind("<ButtonPress-1>", self.left_mouse_press)
-        self.bind("<B1-Motion>", self.drag_motion)
+        self.bind("<ButtonPress-1>", self._on_drag_start)
+        self.bind("<B1-Motion>", self._on_drag_motion)
         self.bind("<ButtonRelease-1>", lambda event: setattr(self, "_drag_start_x", None) or setattr(self, "_drag_start_y", None))  # Reset mouse position on release
-        #self.bind("<MouseWheel>", self.zoom)
         self.bind(sequence="<Configure>", func= self.center_scroll_region)  # Update scroll region to fit all items
         
-        self.resized = False
-
     def create_reference_grid(self, x_min: float, x_max: float, y_min: float, y_max: float, spacing: float = 1.0, color: str = 'lightgray') -> None:
         """Creates a reference grid on the canvas with the given parameters.
+        
         :param x_min: The minimum x-coordinate of the grid in cartesian space (inches).
         :type x_min: float
         :param x_max: The maximum x-coordinate of the grid in cartesian space (inches).
@@ -162,95 +207,81 @@ class Canvas(tk.Canvas):
         :param spacing: The spacing between the grid lines in cartesian space (inches).
         :type spacing: float
         :param color: The color of the grid lines.
-        :type color: str"""
+        :type color: str
+        :rtype: None"""
         
         # Vertical lines
         x = 0
         while x <= x_max:
-            x1, y1 = self.cartesian_to_canvas(x=x, y=y_min)
-            x2, y2 = self.cartesian_to_canvas(x=x, y=y_max)
+            x1, y1 = Canvas.cartesian_to_canvas(x=x, y=y_min)
+            x2, y2 = Canvas.cartesian_to_canvas(x=x, y=y_max)
             self.create_line(x1, y1, x2, y2, fill=color, width=1)
             if x != 0:
-                x1, y1 = self.cartesian_to_canvas(x=-x, y=y_min)
-                x2, y2 = self.cartesian_to_canvas(x=-x, y=y_max)
+                x1, y1 = Canvas.cartesian_to_canvas(x=-x, y=y_min)
+                x2, y2 = Canvas.cartesian_to_canvas(x=-x, y=y_max)
                 self.create_line(x1, y1, x2, y2, fill=color, width=1)
             x += spacing
 
         # Horizontal lines
         y = 0
         while y <= y_max:
-            x1, y1 = self.cartesian_to_canvas(x=x_min, y=y)
-            x2, y2 = self.cartesian_to_canvas(x=x_max, y=y)
+            x1, y1 = Canvas.cartesian_to_canvas(x=x_min, y=y)
+            x2, y2 = Canvas.cartesian_to_canvas(x=x_max, y=y)
             self.create_line(x1, y1, x2, y2, fill=color, width=1)
             if y != 0:
-                x1, y1 = self.cartesian_to_canvas(x=x_min, y=-y)
-                x2, y2 = self.cartesian_to_canvas(x=x_max, y=-y)
+                x1, y1 = Canvas.cartesian_to_canvas(x=x_min, y=-y)
+                x2, y2 = Canvas.cartesian_to_canvas(x=x_max, y=-y)
                 self.create_line(x1, y1, x2, y2, fill=color, width=1)
             y += spacing
 
-    def create_cross(self, x, y, size, color='red'):
-        x1, y1 = self.cartesian_to_canvas(x=x-size/2, y=y)
-        x2, y2 = self.cartesian_to_canvas(x=x+size/2, y=y)
-        self.create_line(x1, y1, x2, y2, fill=color, width=2)
-        x1, y1 = self.cartesian_to_canvas(x=x, y=y-size/2)
-        x2, y2 = self.cartesian_to_canvas(x=x, y=y+size/2)
-        self.create_line(x1, y1, x2, y2, fill=color, width=2)
+    def center_scroll_region(self, event: tk.Event) -> None:
+        """Centers the scroll region of the canvas.
 
-    def center_scroll_region(self, event):
-        """Centers the scroll region of the canvas."""
-        if not self.resized:
-            # Get the current scroll region
-            scroll_region = self.bbox(tk.ALL)
-            
-            # Calculate the center position
-            center_x = scroll_region[0] + (scroll_region[2] - scroll_region[0]) / 2
-            center_y = scroll_region[1] + (scroll_region[3] -scroll_region[1]) / 2
-            
-            # Set the canvas view to center the scroll region
-            self.xview_scroll(-(int)(self.winfo_width()/2-center_x), "units")
-            self.yview_scroll(-(int)(self.winfo_height()/2-center_y), "units")
-
-            self.resized = True
+        :param event: The event that triggered the function call.
+        :type event: :py:class:`tkinter.Event`
+        :rtype: None"""
         
-    @property
-    def briann(self):
-        return self._briann
-
-    def get_area_button(self, label: int) -> customtkinter.CTkButton:
+        # Get the current scroll region
+        scroll_region = self.bbox(tk.ALL)
         
-        # Fetch
-        result = None
-        for button in self.area_buttons.values():
-            if button.cget('text') == label: result = button
-
-        # Return
-        return result
-
-    def left_mouse_press(self, event):
-        widget = event.widget
-        widget._press_x = event.x
-        widget._press_y = event.y
-        widget._drag_start_x = event.x
-        widget._drag_start_y = event.y
+        # Calculate the center position
+        center_x = scroll_region[0] + (scroll_region[2] - scroll_region[0]) / 2
+        center_y = scroll_region[1] + (scroll_region[3] - scroll_region[1]) / 2
         
-    def drag_motion(self, event):
-        widget = event.widget
-        if widget._drag_start_x != None and widget._drag_start_y != None:
-            dx = event.x - widget._drag_start_x
-            dy = event.y - widget._drag_start_y 
-            widget.xview_scroll(-dx, "units")
-            widget.yview_scroll(-dy, "units")
+        # Set the canvas view to center the scroll region
+        self.xview_scroll(-(int)(self.winfo_width()/2-center_x), "units")
+        self.yview_scroll(-(int)(self.winfo_height()/2-center_y), "units")
+
+    def _on_drag_start(self, event: tk.Event) -> None:
+        """Prepares the drag operation
+
+        :param event: The event that triggered the function call.
+        :type event: :py:class:`tkinter.Event`
+        :rtype: None"""
+
+        self._press_x = event.x
+        self._press_y = event.y
+        self._drag_start_x = event.x
+        self._drag_start_y = event.y
+        
+    def _on_drag_motion(self, event: tk.Event) -> None:
+        """Performs a step of the drag operation.
+        
+        :param event: The event that triggered the function call.
+        :type event: :py:class:`tkinter.Event`
+        :rtype: None"""
+        
+        if self._drag_start_x != None and self._drag_start_y != None:
+            dx = event.x - self._drag_start_x
+            dy = event.y - self._drag_start_y 
+            self.xview_scroll(-dx, "units")
+            self.yview_scroll(-dy, "units")
             
-            widget._drag_start_x = event.x
-            widget._drag_start_y = event.y
+            self._drag_start_x = event.x
+            self._drag_start_y = event.y
 
-    def zoom(self, event):
-        x = self.canvasx(event.x)
-        y = self.canvasy(event.y)
-        factor = 1.001 ** event.delta
-        self.scale(tk.ALL, x, y, factor, factor)
-
-    def cartesian_to_canvas(self, x: float, y: float) -> Tuple[int, int]:
+    @staticmethod
+    def cartesian_to_canvas(x: float, y: float) -> Tuple[int, int]:
         """Converts from a cartesian coordinate system to this canvas's coordinate system.
         - The cartesian coordinate system has its origin in the center of the canvas, with the x-axis pointing to the right and the y-axis pointing upwards and its units are inches.
         - The canvas coordinate system has its origin in the top left corner of the canvas, with the x-axis pointing to the right and the y-axis pointing downwards and its units are pixels.
@@ -262,9 +293,10 @@ class Canvas(tk.Canvas):
         :return: The x and y coordinates in canvas space.
         :rtype: Tuple[int, int]"""
 
-        return (int)(x*self.dpi), (int)(-y*self.dpi)
+        return (int)(x*DPI), (int)(-y*DPI)
 
-    def canvas_to_cartesian(self, x: int, y: int) -> Tuple[float, float]:
+    @staticmethod
+    def canvas_to_cartesian(x: int, y: int) -> Tuple[float, float]:
         """Converts from this canvas's coordinate system to a cartesian coordinate system.
         - The cartesian coordinate system has its origin in the center of the canvas, with the x-axis pointing to the right and the y-axis pointing upwards and its units are inches.
         - The canvas coordinate system has its origin in the top left corner of the canvas, with the x-axis pointing to the right and the y-axis pointing downwards and its units are pixels.
@@ -276,52 +308,44 @@ class Canvas(tk.Canvas):
         :return: The x and y coordinates in cartesian space.
         :rtype: Tuple[float, float]"""
 
-        return (float)(x)/self.dpi, -(float)(y)/self.dpi
+        return (float)(x)/DPI, -(float)(y)/DPI
 
 class DraggableWidget():
-    """Creates a visualizer that visualizes data in a rectangle whose center is at (`x`,`y`) with provided `width` and `height`.
+    """Creates a visualizer that visualizes data in a rectangle whose center is at (`x`,`y`).
         The visualizer will be drawn on top of all previously drawn elements on the `canvas` and it can be dragged around with the mouse.
 
         :param canvas: The canvas to draw the visualizer on.
         :type canvas: Canvas
+        :param widget: The widget to be placed on the canvas.
+        :type widget: py:class:`tkinter.Widget`
         :param x: The x-coordinate of the visualizer's center in Cartesian space (inches).
-        :type x: float
+        :type x: float, optional, defaults to 0
         :param y: The y-coordinate of the visualizer's center in Cartesian space (inches).
-        :type y: float
-        :param width: The width of the visualizer in inches.
-        :type width: float
-        :param height: The height of the visualizer in inches.
-        :type height: float
+        :type y: float, optional, defaults to 0
+        
         :return: The visualizer that was created.
         :rtype: :py:class:`.Visualizer`"""
         
-    def __init__(self, canvas: Canvas, widget: tk.Widget, initial_x: float, initial_y: float) -> "DraggableWidget":
+    def __init__(self, canvas: Canvas, widget: tk.Widget, x: float = 0, y: float = 0) -> "DraggableWidget":
         
         # Set properties
         self._canvas = canvas
-        
-        # Create window on canvas
-        self._initial_x, self._initial_y = self.canvas.cartesian_to_canvas(x=initial_x, y=initial_y) # Convert to canvas space
+        self._initial_x, self._initial_y = Canvas.cartesian_to_canvas(x=x, y=y) # Convert to canvas space
         self._x, self._y = self._initial_x, self._initial_y # Current position in canvas space
+        self._location_subscribers = []
+                
+        # Create window on canvas
+        self._window_index = self._canvas.create_window(self._x, self._y, window=widget, anchor=tk.CENTER)
         
-        self._window_index = self.canvas.create_window(self._x, self._y, window=widget, anchor=tk.CENTER)
-            
         # Position along Z-Axis
         widget.tk.call('lower', widget._w, None)
-        widget.tk.call('lower', self.canvas._w, None)
+        widget.tk.call('lower', self._canvas._w, None)
 
         # Add drag listeners
         widget.bind("<ButtonPress-1>", self._on_drag_start)
         widget.bind("<B1-Motion>", self._on_drag_motion)
         widget.bind("<ButtonRelease-1>", self._on_drag_end)  # Reset mouse position on release
         
-    @property
-    def canvas(self) -> Canvas:
-        """
-        :return: The canvas on which this visualizer is drawn.
-        :rtype: Canvas"""
-        return self._canvas
-    
     @property
     def x(self) -> float:
         """
@@ -346,35 +370,54 @@ class DraggableWidget():
         # Output
         return y
 
-    def _on_drag_start(self, event) -> None:
+    def _on_drag_start(self, event: tk.Event) -> None:
         """Begins a drag operation.
-        :param event: The event that triggered this method.
-        :type event: tk.Event"""
+        
+        :param event: The event that triggered the function call.
+        :type event: :py:class:`tkinter.Event`
+        :rtype: None"""
         
         # Save mouse position in canvas space
         self._mouse_x = self._initial_x + event.x
         self._mouse_y = self._initial_y + event.y
-                
-    def _on_drag_motion(self, event) -> None:
+            
+    def add_location_subscriber(self, subscriber: "DraggableWidget.LocationSubscriber") -> None:
+        """Adds a subscriber that will be notified once the location of this DraggableWidget changes.
+
+        :param subscriber: The subscriber to be added to the subscription list.
+        :type subscriber: :py:class:`.DraggableWidget.LocationSubscriber`
+        :rtype: None"""
+
+        self._location_subscribers.append(subscriber)
+
+    def _on_drag_motion(self, event: tk.Event) -> None:
         """Begins a drag operation.
-        :param event: The event that triggered this method.
-        :type event: tk.Event"""
+        
+        :param event: The event that triggered the function call.
+        :type event: :py:class:`tkinter.Event`
+        :rtype: None"""
         
         # Compute delta
         dx = self._initial_x + event.x - self._mouse_x
         dy = self._initial_y + event.y - self._mouse_y
         
         # Move self on canvas
-        self.canvas.move(self._window_index, dx, dy)
+        self._canvas.move(self._window_index, dx, dy)
 
         # Update position of self
         self._x += dx
         self._y += dy
+
+        # Update subscribers
+        for subscriber in self._location_subscribers:
+            subscriber.on_location_update(draggable_widget=self)
         
-    def _on_drag_end(self, event) -> None:
+    def _on_drag_end(self, event: tk.Event) -> None:
         """Ends a drag operation.
-        :param event: The event that triggered this method.
-        :type event: tk.Event"""
+        
+        :param event: The event that triggered the function call.
+        :type event: :py:class:`tkinter.Event`
+        :rtype: None"""
         
         # Reset mouse position
         self._mouse_x = 0
@@ -383,71 +426,95 @@ class DraggableWidget():
         # Update initial position
         self._initial_x, self._initial_y = self._x, self._y
 
-class Area(DraggableWidget, bpnc.AreaStateSubscriber):
-    
-    def __init__(self, area: bpnc.Area, canvas: Canvas, x: float, y: float, size: float) -> "Area":
-        """x, y, and size are in inches"""
+    class LocationSubscriber(ABC):
+        """An abstract base class for subscribers that want to receive the location of a :py:class:`.DraggableWidget` every time it is updated. Subscribers must implement the :py:meth:`~.DraggableWidget.LocationSubscriber.on_location_update` method.
+        """
 
+        @abstractmethod
+        def on_location_update(self, draggable_widget: "DraggableWidget") -> None:
+            """This method will be called every time the :py:class:`.DraggableWidget`'s :py:meth:`~.DraggableWidget.x` or :py:meth:`~.DraggableWidget.y` are updated.
+
+            :param draggable_widget: The draggable widget that was updated.
+            :type draggable_widget: :py:class:`~.DraggableWidget`
+            :rtype: None
+            """
+            pass
+
+class Area(DraggableWidget):
+    """A visual representation of a :py:class:`~.src.briann.python.components.BrIANN` that can be placed onto the :py:class:`.Canvas`.
+    It is represented by a button that can be moved around. The button changes color to indicate whether the corresponding BrIANN area is currently being updated.
+    When right-clicking the button, an option menu unfolds that allows to add a visualizer for the state of the area.
+    
+    :param bpnc_area: The BrIANN area to be visualized.
+    :type bpnc_area: :py:class:`~.src.briann.python.components.Area`
+    :param canvas: The canvas on which the area shall be visualized.
+    :type canvas: :py:class:'.Canvas`
+    :param briann: The BrIANN that is being simulated.
+    :type briann: :py:class:`~src.briann.python.components.BrIANN`
+    :param x: The x-coordinate of the visualizer's center in Cartesian space (inches).
+    :type x: float, optional, defaults to 0
+    :param y: The y-coordinate of the visualizer's center in Cartesian space (inches).
+    :type y: float, optional, defaults to 0
+    :return: An instance of this class.
+    :rtype: py:class:`.Area`
+    """
+
+    def __init__(self, bpnc_area: bpnc.Area, canvas: Canvas, briann: bpnc.BrIANN, x: float, y: float, size: float) -> "Area":
+       
         # Set properties
+        self._bpnc_area = bpnc_area
+        self._briann = briann
         self._size = size
 
+        # Link callbacks to observer
+        bpuc.CallbackManager.add_callback_to_attribute(target_class=bpnc.Area, target_instance=bpnc_area, attribute_name='_update_count', callback=self.on_update_count_update)
+        bpuc.CallbackManager.add_callback_to_attribute(target_class=bpnc.BrIANN, target_instance=briann, attribute_name='_current_simulation_time', callback=self.on_current_simulation_time_update)
+        
         # Create button
         self._button = customtkinter.CTkButton(canvas, 
-                                         text = area.index, 
+                                         text = bpnc_area.index, 
                                          fg_color='lightgray', 
                                          border_color="darkgray",#"#325882",# "#14375e", 
-                                         border_width=0.05*size*canvas.dpi, 
+                                         border_width=0.05*size*DPI, 
                                          text_color='black', 
                                          anchor = tk.CENTER, 
-                                         width=size*canvas.dpi, # Dynamcially adjusts width based on text length
-                                         height=size*canvas.dpi, 
-                                         corner_radius=0.5*size*canvas.dpi)
-        self._button.bind("<Button-2>", lambda area_index=area.index: self._on_area_click(area_index=area_index))
-        self._button.bind("<Button-3>", lambda area_index=area.index: self._on_area_click(area_index=area_index))
+                                         width=size*DPI, # Dynamcially adjusts width based on text length
+                                         height=size*DPI, 
+                                         corner_radius=0.5*size*DPI)
+        
+        # Add right-click functionality 
+        self._button.bind("<Button-2>", self._on_right_click)
+        self._button.bind("<Button-3>", self._on_right_click)
+
+        # Add state visualizers array
+        self._state_visualizers = []
 
         # Call super
-        super().__init__(canvas=canvas, widget=self._button, initial_x=x, initial_y=y)
-        
-        # Set properties
-        self._area = area
-        self._subscribers = []
+        super().__init__(canvas=canvas, widget=self._button, x=x, y=y)
 
     @property
     def size(self) -> float:
         """:return: The size of this area in inches.
         :rtype: float"""
         return self._size
-
-    def display_as_active(self) -> None:
-        """Displays this area as active."""
-        self._button.configure(fg_color='orange', text_color='white')
-
-    def display_as_inactive(self) -> None:
-        """Displays this area as inactive."""
-        self._button.configure(fg_color='lightgray', text_color='black')
-
+    
     @property
-    def area(self) -> bpnc.Area:
-        """
-        :return: The area that is visualized by this button.
-        :rtype: bpnc.Area"""
-        return self._area
+    def state_visualizers(self) -> List["AreaStateVisualizer"]:
+        """:return: The list of state visualizers that are currently attached to this area.
+        :rtype: List[:py:class:`.AreaStateVisualizer`]"""
+        return self._state_visualizers
 
-    def add_subscriber(self, subscriber):
-        self._subscribers.append(subscriber)
-    
-    def _on_drag_motion(self, event) -> None:
-        super()._on_drag_motion(event=event)
+    def _on_right_click(self, event: tk.Event) -> None:
+        """Displays a pop-up window that allow to choose a :py:class:`.AreaStateVisualizer`.
         
-        # Redraw connections
-        for subscriber in self._subscribers:
-            subscriber.on_area_reposition()
-    
-    def _on_area_click(self, area_index: str):
+        :param event: The event that triggered the function call.
+        :type event: :py:class:`tkinter.Event`
+        :rtype: None
+        """
         
         # Create a popup
         popup = tk.Toplevel()
-        popup.geometry(f"{(int)(2*self.canvas.dpi)}x{(int)(2*self.canvas.dpi)}+{self.canvas.winfo_rootx()+self._button.winfo_x()}+{self.canvas.winfo_rooty()+self._button.winfo_y()}")
+        popup.geometry(f"{(int)(2*DPI)}x{(int)(2*DPI)}+{self._canvas.winfo_rootx()+self._button.winfo_x()}+{self._canvas.winfo_rooty()+self._button.winfo_y()}")
         popup.overrideredirect(True) # Prevent window decorations
         
         # Add widgets to popup
@@ -455,73 +522,114 @@ class Area(DraggableWidget, bpnc.AreaStateSubscriber):
         option_menu = customtkinter.CTkOptionMenu(popup, values=["Line Chart", "t-SNE", "Heatmap"])
         option_menu.pack(expand=True, fill="x", padx=10, pady=10)
         customtkinter.CTkButton(popup, text="Add", 
-                                command=lambda option_menu=option_menu, area_index=area_index, popup=popup: self.add_state_visualizer(option=option_menu.get(), area_index=area_index, popup=popup)
+                                command=lambda option_menu=option_menu, popup=popup, area=self: area._add_state_visualizer(option=option_menu.get(), popup=popup)
                                 ).pack(expand=True, fill="x", padx=10, pady=10)
         
         # Display popup on top of everything else
         popup.lift()
              
-    def add_state_visualizer(self, area_index:int, option: str, popup: customtkinter.CTkToplevel):
-        if option == "Line Chart":
-            StateVisualizerLineChart(area=self.area, initial_x=self.x, initial_y=self.y, width=3, height=2, canvas=self.canvas)
-        popup.destroy()
+    def _add_state_visualizer(self, option: str, popup: customtkinter.CTkToplevel) -> None:
+        """Maps the user's selection for the preferred :py:class:`.AreaStateVisualizer` to the actual visualizer to be displayed on screen.
         
+        :param option: The name of the chosen visualizer. Options are ["Line Chart"].
+        :type option: str
+        :param popup: The pop-up that allowed the users to make a choice. This pop-up will be deleted by the current method.
+        :type popup: :py:class:`customtkinter.CTkTopLevel`
+        :rtype: None
+        """
 
-    def on_state_update(self, area_index: int, time_frame: bpnc.TimeFrame) -> None:
-        pass
-
-class Connection():
+        # Map selection option to visualizer
+        if option == "Line Chart":
+            self._state_visualizers.append(StateVisualizerLineChart(area=self._bpnc_area, canvas=self._canvas, current_simulation_time=self._briann.current_simulation_time, initial_x=self.x, initial_y=self.y, width=3, height=2))
+            
+        # Destroy the popup
+        popup.destroy()
     
-    def __init__(self, connection: bpnc.Connection, from_area: Area, to_area: Area, canvas: Canvas, thickness: float = 2.0, bend_by: float = 0.0) -> "Connection":
+    def on_current_simulation_time_update(self, obj, name, value) -> None:
+        
+        # Display self as inactive
+        self._button.configure(fg_color='lightgray', text_color='black')
+
+    def on_update_count_update(self, obj, name, value) -> None:
+        
+        # Display self as active
+        self._button.configure(fg_color='orange', text_color='white')
+
+class Connection(DraggableWidget.LocationSubscriber):
+    """A visual representation of a :py:class:`~src.briann.python.components.Connection`. The connection is automatically redraws itself when the area is repositioned.
+    
+    :param from_area: The area from which the connection starts.
+    :type from_area: :py:class:`.Area`
+    :param to_area: The area at which the connection ends.
+    :type to_area: :py:class:`.Area`
+    :canvas: The canvas on which the connection shall be drawn.
+    :type canvas: :py:class:`.Canvas`
+    :param width: The thickness of the line representing this connection on screen.
+    :type width: int, optional, default to 2.
+    :param bend_by: The extend by which the connection should be bent (in inches) relative to the mid-point between the `from_area` and the `to_area`.
+    :type bend_by: float, optional, defaults to 0.0.
+    :return: An instance of this class.
+    :rtype: :py:class:`.Connection`  
+    """
+
+    def __init__(self, from_area: Area, to_area: Area, canvas: Canvas, width: int = 2, bend_by: float = 0.0) -> "Connection":
         
         # Set properties
-        self.canvas = canvas
-        self.from_area = from_area
-        self.to_area = to_area
-        self.thickness = thickness
-        self.bend_by = bend_by
+        self._canvas = canvas
+        self._from_area = from_area
+        self._to_area = to_area
+        self._width = width
+        self._bend_by = bend_by
         
         # Draw connection
         self.draw()
 
-    def draw(self):
+        # Add self as location subscriber to areas
+        from_area.add_location_subscriber(subscriber=self)
+        to_area.add_location_subscriber(subscriber=self)
+
+    def draw(self) -> None:
+        """Draws self on the canvas as two segments. The first segment goes from the from-area to the mid-point with an arrow-head. The second segment goes from the mid-point to the to-area.
+        
+        :rtype: None"""
+
         # Get start end points from areas
-        x0, y0 = self.from_area.x, self.from_area.y # Starting point
-        x1, y1 = self.to_area.x, self.to_area.y # Endpoint
+        x0, y0 = self._from_area.x, self._from_area.y # Starting point
+        x1, y1 = self._to_area.x, self._to_area.y # Endpoint
         
         # Self loop
         if x0 == x1 and y0 == y1:
             
             # Bounding box for circle
             top_left = (x0,y0)
-            a = 1*self.from_area.size # Step size for x and y from top left to bottom right
+            a = self._from_area.size # Step size for x and y from top left to bottom right
             bottom_right = (x0 + a, y0 - a)
             b = np.sqrt((a/2.0)**2+(a/2.0)**2) # length of diagonal from center of box to its corner
             tmp = np.cos(np.radians(45)) * (b + (a/2.0)) # Projection onto one of the sides of the bounding box
             arrow_position = (x0+tmp, y0-tmp)
 
             # Draw on screen space
-            top_left = self.canvas.cartesian_to_canvas(x=top_left[0], y=top_left[1])
-            bottom_right = self.canvas.cartesian_to_canvas(x=bottom_right[0], y=bottom_right[1])
-            arrow_position = self.canvas.cartesian_to_canvas(x=arrow_position[0], y=arrow_position[1])
-            self._first_segment = self.canvas.create_arc(*top_left, *bottom_right, width=self.thickness, start=0, extent=359, style='arc')
-            self._second_segment = self.canvas.create_line(arrow_position[0]-1, arrow_position[1]+1, *arrow_position, arrow='last')
+            top_left = Canvas.cartesian_to_canvas(x=top_left[0], y=top_left[1])
+            bottom_right = Canvas.cartesian_to_canvas(x=bottom_right[0], y=bottom_right[1])
+            arrow_position = Canvas.cartesian_to_canvas(x=arrow_position[0], y=arrow_position[1])
+            self._first_segment = self._canvas.create_arc(*top_left, *bottom_right, width=self._width, start=0, extent=359, style='arc')
+            self._second_segment = self._canvas.create_line(arrow_position[0]-1, arrow_position[1]+1, *arrow_position, arrow='last')
             return
 
         # Straight line
-        if self.bend_by == 0:
+        if self._bend_by == 0:
             # Draw on screen space
-            x0, y0 = self.canvas.cartesian_to_canvas(x=x0, y=y0)
-            x1, y1 = self.canvas.cartesian_to_canvas(x=x1, y=y1)
+            x0, y0 = Canvas.cartesian_to_canvas(x=x0, y=y0)
+            x1, y1 = Canvas.cartesian_to_canvas(x=x1, y=y1)
             xm, ym = (x0+x1)/2, (y0+y1)/2
-            self._first_segment = self.canvas.create_line(x0,y0, xm,ym, width=self.thickness, arrow='last'); 
-            self._second_segment = self.canvas.create_line(xm,ym, x1,y1, width=self.thickness); 
+            self._first_segment = self._canvas.create_line(x0,y0, xm,ym, width=self._width, arrow='last'); 
+            self._second_segment = self._canvas.create_line(xm,ym, x1,y1, width=self._width); 
             
             return
         
         else:
             # Arc (tilted and translated ellipse segment)
-            height = 2*self.bend_by
+            height = 2*self._bend_by
             width = np.sqrt((x1-x0)**2+(y1-y0)**2)
             
             y = lambda x: np.sqrt(((height/2)**2)*(1 - (x**2)/((width/2)**2))) # Equation of an ellipse centered at (0,0) with radii width/2 and height/2
@@ -534,22 +642,21 @@ class Connection():
             arc_points = np.dot(R,arc_points) + np.array([[(x0+x1)/2], [(y0+y1)/2]]) # Apply rotation and translation
             
             # Draw on screen space
-            arc_points = [self.canvas.cartesian_to_canvas(x=arc_points[0,i], y=arc_points[1,i]) for i in range(arc_points.shape[1])]
-            self._first_segment = self.canvas.create_line(*arc_points[:len(arc_points)//2+1], width=self.thickness, smooth=True, arrow='last')
-            self._second_segment = self.canvas.create_line(*arc_points[len(arc_points)//2:], width=self.thickness, smooth=True)
+            arc_points = [Canvas.cartesian_to_canvas(x=arc_points[0,i], y=arc_points[1,i]) for i in range(arc_points.shape[1])]
+            self._first_segment = self._canvas.create_line(*arc_points[:len(arc_points)//2+1], width=self._width, smooth=True, arrow='last')
+            self._second_segment = self._canvas.create_line(*arc_points[len(arc_points)//2:], width=self._width, smooth=True)
             
-    def on_area_reposition(self):
-        """Re-draws the connection when an area is repositioned."""
+    def on_location_update(self, draggable_widget: DraggableWidget) -> None:
         
         # Remove old segments
-        self.canvas.delete(self._first_segment)
-        self.canvas.delete(self._second_segment)
+        self._canvas.delete(self._first_segment)
+        self._canvas.delete(self._second_segment)
         
         # Draw new segments
         self.draw()
 
 class NetworkVisualizer():
-    """Visualizes the network structure of a given `briann` instance in a rectangle whose center is at (`x`,`y`) with provided `width` and `height`.
+    """Visualizes the network structure of a given `briann` instance in a rectangle whose center is at (`initial_x`,`initial_y`) with provided `width` and `height`.
         The visualizer will be drawn on top of all previously drawn elements on the `canvas` and it can be dragged around with the mouse.
 
         :param briann: The BrIANN instance to visualize.
@@ -592,8 +699,8 @@ class NetworkVisualizer():
         self.area_to_drawable = {}
         for area in self.briann.areas:
             x, y = area_to_position[area][0], area_to_position[area][1]
-            self.area_to_drawable[area] = Area(area=area, canvas=self.canvas, x=x, y=y, size=area_size)
-        
+            self.area_to_drawable[area] = Area(bpnc_area=area, briann=self._briann, canvas=self.canvas, x=x, y=y, size=area_size)
+            
         # Draw the edges
         width = 0.05*area_size
         curved_edges = [edge for edge in G.edges() if reversed(edge) in G.edges()]
@@ -603,15 +710,8 @@ class NetworkVisualizer():
             u = self.briann.get_area_at_index(index=u.index)
             v = self.briann.get_area_at_index(index=v.index)
             bend_by = 0.25 if (u,v) in curved_edges else 0.0
-            self.edge_to_drawable[u.index, v.index] = Connection(connection=None, from_area=self.area_to_drawable[u], to_area=self.area_to_drawable[v], canvas=self.canvas, thickness=width, bend_by=bend_by)
-            self.area_to_drawable[u].add_subscriber(self.edge_to_drawable[u.index, v.index])
-            self.area_to_drawable[v].add_subscriber(self.edge_to_drawable[u.index, v.index])
-        
-    def update(self, updated_areas: Set[bpnc.Area]):
-        for area, drawable in self.area_to_drawable.items():
-            if area in updated_areas: drawable.display_as_active()
-            else: drawable.display_as_inactive()
-            
+            self.edge_to_drawable[u.index, v.index] = Connection(from_area=self.area_to_drawable[u], to_area=self.area_to_drawable[v], canvas=self.canvas, width=width, bend_by=bend_by)
+          
     @property
     def briann(self) -> bpnc.BrIANN:
         """
@@ -619,55 +719,69 @@ class NetworkVisualizer():
         :rtype: bpnc.BrIANN"""
         return self._briann
 
-class StateVisualizer(DraggableWidget, bpnc.AreaStateSubscriber):
+class AreaStateVisualizer(DraggableWidget):
     """Superclass for a set of classes that create 2D visualizations of a :py:meth:`.TimeFrame.state` on a 1x1 unit square"""
 
-    def __init__(self, area: bpnc.Area, canvas: Canvas, initial_x: float, initial_y: float, width: float, height: float):
+    def __init__(self, area: bpnc.Area, canvas: Canvas, current_simulation_time: float, initial_x: float, initial_y: float, width: float, height: float):
     
         # Set proeprties
         self.bpnc = area
 
         # Create Figure
-        self.figure = plt.figure(figsize=(width, height), dpi=canvas.dpi)
+        self.figure = plt.figure(figsize=(width, height), dpi=DPI)
+        
         self.figure.set_tight_layout(True)
         widget = FigureCanvasTkAgg(plt.gcf()).get_tk_widget()
         
         # Call super
-        super().__init__(canvas=canvas, widget=widget, initial_x=initial_x, initial_y=initial_y)
+        super().__init__(canvas=canvas, widget=widget, x=initial_x, y=initial_y)
 
         # Subscribe to area
-        area.add_state_subscriber(subscriber=self)
-
+        bpuc.CallbackManager.add_callback_to_method(target_instance=area, method_name='forward', callback=self.on_forward_call)
+        bpuc.CallbackManager.add_callback_to_method(target_instance=area, method_name='reset', callback=self.on_reset_call)
+        
         # Initial draw
-        self.update_plot(time_frame=None) # Initialization
-        self.update_plot(time_frame = area.output_time_frame_accumulator.time_frame(current_time=canvas.master._briann.current_simulation_time)) # Draw current time frame
+        self._update_plot(time_frame = area.output_time_frame_accumulator.time_frame(current_time=current_simulation_time)) # Draw current time frame
         
-    def on_state_update(self, area_index: int, time_frame: bpnc.TimeFrame) -> None:
-        plt.figure(self.figure.number)
-        self.update_plot(time_frame=time_frame)
+    def on_forward_call(self, caller) -> None:
+        time_frame = self.bpnc.output_time_frame_accumulator._time_frame
+        self._update_plot(time_frame=time_frame)
 
-    def update_plot(self, time_frame: bpnc.TimeFrame = None) -> None:
-        pass
+    def on_reset_call(self, caller) -> None:
+        # Reset data of self
+        self.ts = np.empty(shape=[0,0])
+        self.ys = np.empty(shape=[0,0])
         
-class StateVisualizerLineChart(StateVisualizer):
+        # Redraw
+        time_frame = self.bpnc.output_time_frame_accumulator._time_frame
+        self._update_plot(time_frame=time_frame)
+
+    def _update_plot(self, time_frame: bpnc.TimeFrame = None) -> None:
+        plt.figure(self.figure.number)
+        
+class StateVisualizerLineChart(AreaStateVisualizer):
     """Visualizes the input of an area in a 2D plot."""
 
-    def __init__(self, area: bpnc.Area, canvas: Canvas, initial_x: float, initial_y: float, width: float, height: float) -> "StateVisualizerLineChart":
-        super().__init__(area=area, canvas=canvas, initial_x=initial_x, initial_y=initial_y, width=width, height=height)
+    def __init__(self, area: bpnc.Area, canvas: Canvas, current_simulation_time: float, initial_x: float, initial_y: float, width: float, height: float) -> "StateVisualizerLineChart":
+        self.ts = np.empty(shape=[0,0])
+        self.ys = np.empty(shape=[0,0])
+
+        super().__init__(area=area, canvas=canvas, current_simulation_time=current_simulation_time, initial_x=initial_x, initial_y=initial_y, width=width, height=height)
         
-    def update_plot(self, time_frame: bpnc.TimeFrame = None) -> None:
+
+    def _update_plot(self, time_frame: bpnc.TimeFrame = None) -> None:
         
+        # Call super
+        super()._update_plot(time_frame=time_frame)
+
+        # Update plot
         plt.clf()
-        if time_frame is None:
-            self.ts = np.empty(shape=[0,0])
-            self.ys = np.empty(shape=[0,0])
-        else:
-                        
-            if len(self.ts) == 0: self.ts = np.repeat([time_frame.time_point], time_frame.state.shape[-1])[np.newaxis,:]
-            else: self.ts = np.concatenate([self.ts, np.repeat([time_frame.time_point], time_frame.state.shape[-1])[np.newaxis,:]], axis=0)
-        
-            if len(self.ys) == 0: self.ys = time_frame.state.cpu().detach().numpy()[0,:][np.newaxis,:]
-            else: self.ys = np.concatenate([self.ys, time_frame.state.cpu().detach().numpy()[0,:][np.newaxis,:]], axis=0)  
+                 
+        if len(self.ts) == 0: self.ts = np.repeat([time_frame.time_point], time_frame.state.shape[-1])[np.newaxis,:]
+        else: self.ts = np.concatenate([self.ts, np.repeat([time_frame.time_point], time_frame.state.shape[-1])[np.newaxis,:]], axis=0)
+    
+        if len(self.ys) == 0: self.ys = time_frame.state.cpu().detach().numpy()[0,:][np.newaxis,:]
+        else: self.ys = np.concatenate([self.ys, time_frame.state.cpu().detach().numpy()[0,:][np.newaxis,:]], axis=0)  
         
         plt.plot(self.ts, self.ys)
         for channel in range(self.ys.shape[1]): plt.scatter(self.ts[:,channel], self.ys[:,channel])
@@ -679,7 +793,7 @@ class StateVisualizerLineChart(StateVisualizer):
 
 if __name__ == "__main__":
     
-    path = bpuu.map_path_to_os(path="tests/briann 1.json")
+    path = bpufm.map_path_to_os(path="tests/briann 1.json")
     with open(path, 'r') as file:
         configuration = json.loads(file.read())
 

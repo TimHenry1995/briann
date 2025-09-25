@@ -11,6 +11,7 @@ import os
 sys.path.append(os.path.abspath(""))
 from src.briann.python.training import data_management as dmg
 import networkx as nx
+from briann.python.utilities import callbacks as bpuc
 
 class TimeFrame():
     """A time-frame in the simulation that holds a temporary state of an :py:class:`.Area`. 
@@ -146,7 +147,7 @@ class TimeFrameAccumulator():
         if not isinstance(current_time, float):
             raise TypeError(f"The current_time must be a float but was {type(current_time)}.")
         if self._time_frame.time_point > current_time:
-            raise ValueError(f"When reading a TimeFrame, the provided current_time ({current_time}) must be later than that of the time-frame held by self ({self._time_frame.time_point}).")
+            raise ValueError(f"When reading a TimeFrame, the provided current_time ({current_time}) must be later than that of the time-frame held by self ({self._time_frame.value.time_point}).")
         
         # Update time frame
         dt = current_time - self._time_frame.time_point
@@ -533,7 +534,7 @@ class Area(torch.nn.Module):
         if hasattr(self, "_subscribers"):
             new_time_frame = self.output_time_frame_accumulator.time_frame(current_time=current_time)
             for subscriber in self._subscribers:
-                subscriber.receive_state(area_index=self.index, time_frame=new_time_frame)
+                subscriber.on_state_update(area_index=self.index, time_frame=new_time_frame)
 
     def reset(self) -> None:
         """Resets the area to its initial state. This should be done everytime a new trial is simulated."""
@@ -550,39 +551,9 @@ class Area(torch.nn.Module):
             for subscriber in self._subscribers:
                 subscriber.on_state_update(area_index=self.index, time_frame=new_time_frame)
 
-    def add_state_subscriber(self, subscriber: "AreaStateSubscriber") -> None:
-        """Adds a subscriber to the area whose :py:meth:`~.AreaStateSubscriber.on_state_update` method will be called every time the area's :py:meth:`~.Area.forward` is called.
-
-        :param subscriber: The subscriber to be added.
-        :type subscriber: :py:class:`AreaStateSubscriber`
-        """
-
-        if not isinstance(subscriber, AreaStateSubscriber):
-            raise TypeError("The subscriber to an Area's state change must be an AreaStateSubscriber.")
-        
-        if not hasattr(self, "_subscribers"):
-            self._subscribers = []
-        
-        self._subscribers.append(subscriber)
-
     def __repr__(self) -> str:
         """Returns a string representation of the area."""
         return f"Area(index={self._index}, update_rate={self._update_rate}, update_count={self._update_count})"
-
-class AreaStateSubscriber(ABC):
-    """An abstract base class for subscribers that want to receive the state of an area every time it is updated. Subscribers must implement the :py:meth:`~.AreaStateSubscriber.receive_state` method.
-    """
-
-    @abstractmethod
-    def on_state_update(self, area: Area, time_frame: TimeFrame) -> None:
-        """This method will be called every time the area's :py:meth:`~.Area.forward` method is called. The subscriber can then process the received state as desired.
-
-        :param area: The area that was updated.
-        :type area: :py:class:`~.Area`
-        :param time_frame: The time frame that was produced by the area.
-        :type time_frame: TimeFrame
-        """
-        pass
 
 class Source(Area):
     """The source :py:class:`.Area` is a special area because it streams the input to the other areas. In order to set it up for the simulation of a trial,
@@ -676,7 +647,7 @@ class Source(Area):
             self._stimulus_batch.appendleft(time_frame)
 
         # Load first time-frame
-        self._update_count = self.update_count - 1 # This will be incremented again in the forward method and then the first data point corresponds to the default update count of 0
+        self._update_count -= 1 # This will be incremented again in the forward method and then the first data point corresponds to the default update count
         self.collect_inputs(current_time=0.0)
         self.forward()
 
@@ -763,6 +734,9 @@ class BrIANN(torch.nn.Module):
 
         # Set the time of the simulation
         self._current_simulation_time = 0.0
+        """:return: The time that has passed since the start of the simulation. It is updated after each step of the simulation.
+        :rtype: float
+        """
 
     @property
     def areas(self) -> Set[Area]:
@@ -1043,7 +1017,7 @@ class BrIANN(torch.nn.Module):
         self._current_simulation_time = min_time
 
         # Make all areas collect their inputs
-        for area in due_areas: area.collect_inputs(current_time=self._current_simulation_time)
+        for area in due_areas: area.collect_inputs(current_time=self.current_simulation_time)
 
         # Make all areas process their inputs
         for area in due_areas: area.forward()
@@ -1060,3 +1034,5 @@ class BrIANN(torch.nn.Module):
                 string += f"\t{connection}\n"
 
         return string
+
+
