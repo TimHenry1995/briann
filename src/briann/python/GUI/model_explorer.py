@@ -462,7 +462,7 @@ class Area(DraggableWidget):
         self._briann = briann
         self._size = size
 
-        # Link callbacks to observer
+        # Link callbacks
         bpuc.CallbackManager.add_callback_to_attribute(target_class=bpnc.Area, target_instance=bpnc_area, attribute_name='_update_count', callback=self.on_update_count_update)
         bpuc.CallbackManager.add_callback_to_attribute(target_class=bpnc.BrIANN, target_instance=briann, attribute_name='_current_simulation_time', callback=self.on_current_simulation_time_update)
         bpuc.CallbackManager.add_callback_to_method(target_instance=bpnc_area, method_name='reset', callback= lambda caller, selfy=self: selfy.on_current_simulation_time_update(obj=None, name=None, value=None)) # Reset color when area is reset

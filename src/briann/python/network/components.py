@@ -979,9 +979,6 @@ class BrIANN(torch.nn.Module):
         :rtype: None
         """
         
-        # Reset the simulation time
-        self._current_simulation_time = 0.0
-
         # Reset the states of all areas
         for area in self.areas:
             area.reset()
@@ -990,6 +987,11 @@ class BrIANN(torch.nn.Module):
         for area in self.areas:
             if isinstance(area, Source):
                 area.load_next_stimulus_batch()
+
+        
+        # Reset the simulation time
+        self._current_simulation_time = 0.0
+
 
     def step(self) -> Set[Area]:
         """Performs one step of the simulation by finding the set of areas due to be updated next and calling their :py:meth:`~.Area.collect_inputs` and
