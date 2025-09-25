@@ -170,10 +170,6 @@ class ControllerFrame(customtkinter.CTkFrame):
         # Load next stimulus
         self._briann.load_next_stimulus_batch()
 
-        # Reset area colors
-        for area in self._network_visualizer.area_to_drawable.values():
-            area.on_current_simulation_time_update(obj=None, name=None, value=None)
-
 class Canvas(tk.Canvas):
     """This class creates a canvas on which network components will be displayed. The canvas can be dragged around and has a reference grid in the background.
     
@@ -469,6 +465,7 @@ class Area(DraggableWidget):
         # Link callbacks to observer
         bpuc.CallbackManager.add_callback_to_attribute(target_class=bpnc.Area, target_instance=bpnc_area, attribute_name='_update_count', callback=self.on_update_count_update)
         bpuc.CallbackManager.add_callback_to_attribute(target_class=bpnc.BrIANN, target_instance=briann, attribute_name='_current_simulation_time', callback=self.on_current_simulation_time_update)
+        bpuc.CallbackManager.add_callback_to_method(target_instance=bpnc_area, method_name='reset', callback= lambda caller, selfy=self: selfy.on_current_simulation_time_update(obj=None, name=None, value=None)) # Reset color when area is reset
         
         # Create button
         self._button = customtkinter.CTkButton(canvas, 
