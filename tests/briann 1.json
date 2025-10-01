@@ -81,6 +81,7 @@
             "type": "Source",
             "index": 0,
             "initial_state": "torch.zeros(1)",
+            "state_dimensionality": 1,
             "update_rate": 10.0,
             "dataset_index": 0
         },
@@ -88,7 +89,9 @@
             "type": "Area",
             "index": 1,
             "initial_state": "torch.zeros(2)",
-            "transformation": "torch.nn.Sequential(torch.nn.Linear(5, 2), torch.nn.Sigmoid())",
+            "transformation_input_dimensionality": 5,
+            "state_dimensionality": 2,
+            "transformation": "bpnat.SimpleDenseTransformation(input_dimensionality=5, output_dimensionality=2)",
             "update_rate": 5.0,
             "state_merge_strategy": "lambda input_area_index_to_state: torch.cat(list(input_area_index_to_state.values()), dim=-1)"
         },
@@ -98,7 +101,8 @@
             "initial_state": "torch.zeros(3)",
             "transformation": "torch.nn.Sequential(torch.nn.Linear(5, 3), torch.nn.Sigmoid())",
             "update_rate": 8.0,
-            "state_merge_strategy": "lambda input_area_index_to_state: torch.cat(list(input_area_index_to_state.values()), dim=-1)"
+            "state_merge_strategy": "lambda input_area_index_to_state: torch.cat(list(input_area_index_to_state.values()), dim=-1)",
+            "input_dimensionality": 5
         },
         {
             "type": "Area",
@@ -106,7 +110,8 @@
             "initial_state": "torch.zeros(2)",
             "transformation": "torch.nn.Sequential(torch.nn.Linear(6, 2), torch.nn.Sigmoid())",
             "update_rate": 4.0,
-            "state_merge_strategy": "lambda input_area_index_to_state: torch.cat(list(input_area_index_to_state.values()), dim=-1)"
+            "state_merge_strategy": "lambda input_area_index_to_state: torch.cat(list(input_area_index_to_state.values()), dim=-1)",
+            "input_dimensionality": 6
         },
         {
             "type": "Target",
@@ -114,7 +119,8 @@
             "initial_state": "torch.zeros(3)",
             "transformation": "torch.nn.Sequential(torch.nn.Linear(4, 3), torch.nn.Sigmoid())",
             "update_rate": 1.0,
-            "state_merge_strategy": "lambda input_area_index_to_state: torch.cat(list(input_area_index_to_state.values()), dim=-1)"
+            "state_merge_strategy": "lambda input_area_index_to_state: torch.cat(list(input_area_index_to_state.values()), dim=-1)",
+            "input_dimensionality": 4
         }
     ],
     "datasets":

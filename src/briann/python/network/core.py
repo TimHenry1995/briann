@@ -9,7 +9,9 @@ import json
 import matplotlib.pyplot as plt
 import os
 sys.path.append(os.path.abspath(""))
-from src.briann.python.training import data_management as dmg
+from src.briann.python.network import area_transformations as bpnat
+from src.briann.python.training import data_management as bptdm
+
 import networkx as nx
 from briann.python.utilities import callbacks as bpuc
 
@@ -315,6 +317,8 @@ class Area(torch.nn.Module):
     :type output_time_frame_accumulator: :py:class:`.TimeFrameAccumulator`
     :param input_connections: Sets the :py:meth:`~.Area.input_connections` of this area.
     :type input_connections: List[:py:class:`.Connection`]
+    :param input_dimensionality: Sets the :py:meth:`~.Area.input_dimensionality` of this area.
+    :type input_dimensionality: int
     :param output_connections: Sets the :py:meth:`~.Area.output_connections` of this area.
     :type output_connections: List[:py:class:`.Connection`]
     :param transformation: Sets the :py:meth:`~.Area.transformation` of this area. If a st
@@ -330,6 +334,7 @@ class Area(torch.nn.Module):
     def __init__(self, index: int, 
                  output_time_frame_accumulator: TimeFrameAccumulator, 
                  input_connections: List[Connection], 
+                 input_dimensionality: int,
                  output_connections: List[Connection],
                  transformation: torch.nn.Module, 
                  update_rate: float, 
@@ -342,6 +347,7 @@ class Area(torch.nn.Module):
         self.index = index # Must be set first
         self.output_time_frame_accumulator = output_time_frame_accumulator
         self.input_connections = input_connections
+        self._input_dimensionality = input_dimensionality
         self.output_connections = output_connections
         
         # Check input validity
@@ -423,6 +429,13 @@ class Area(torch.nn.Module):
         self._input_connections = new_value 
 
     @property
+    def input_dimensionality(self) -> int:
+        """:return: The dimensionality of the input to this area. This is the sum of all input dimensionalities if the state merge strategy is None.
+        :rtype: int
+        """
+        return self._input_dimensionality
+
+    @property
     def output_connections(self) -> Set[Connection]:
         """:return: A set of :py:class:`.Connection` objects projecting from this area. 
         :rtype: Set[Connection]
@@ -502,8 +515,8 @@ class Area(torch.nn.Module):
 
         # Collect all inputs
         self._input_states = {}
-        for i, connection in enumerate(self.input_connections):
-           self._input_states[i] = connection.forward(current_time=current_time).state
+        for connection in self.input_connections:
+           self._input_states[connection.from_area_index] = connection.forward(current_time=current_time).state
             
         # Apply merge strategy
         if self._state_merge_strategy != None: self._input_states = self._state_merge_strategy(self._input_states)
@@ -925,7 +938,7 @@ class BrIANN(torch.nn.Module):
                 try:
                     # Create data_loader
                     global dataset
-                    exec("global dataset, dataset_configuration; dataset = dmg." + dataset_type + "(**dataset_configuration)")
+                    exec("global dataset, dataset_configuration; dataset = bptdm." + dataset_type + "(**dataset_configuration)")
                     area_configuration["data_loader"] = torch.utils.data.DataLoader(dataset=dataset, batch_size=batch_size)
                 except:
                     pass
@@ -988,10 +1001,8 @@ class BrIANN(torch.nn.Module):
             if isinstance(area, Source):
                 area.load_next_stimulus_batch()
 
-        
         # Reset the simulation time
         self._current_simulation_time = 0.0
-
 
     def step(self) -> Set[Area]:
         """Performs one step of the simulation by finding the set of areas due to be updated next and calling their :py:meth:`~.Area.collect_inputs` and

@@ -9,7 +9,7 @@ customtkinter.set_appearance_mode("Light")  # Modes: "System" (standard), "Dark"
 customtkinter.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
 import sys, os
 sys.path.append(os.path.abspath(""))
-from src.briann.python.network import components as bpnc
+from briann.python.network import core as bpnc
 from src.briann.python.training import data_management as bptdm
 import networkx as nx   
 import tkinter as tk
