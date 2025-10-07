@@ -1,17 +1,12 @@
 "This module collects all necessary components to build a BrIANN model."
-import numpy as np
 import torch
 from typing import List, Dict, Deque, Set, Any
-
 import sys
-from abc import ABC, abstractmethod
-import json
 import matplotlib.pyplot as plt
 import os
 sys.path.append(os.path.abspath(""))
 from src.briann.python.network import area_transformations as bpnat
 from src.briann.python.training import data_management as bptdm
-
 import networkx as nx
 from briann.python.utilities import callbacks as bpuc
 
@@ -306,9 +301,9 @@ class Connection(torch.nn.Module):
 class Area(torch.nn.Module):
     """An area corresponds to a small population of neurons that jointly hold a representation in the area's :py:meth:`~.Area.output_time_frame_accumulator`.
     Given a time-point t and a set S of areas that should be updated at t, the caller should update the areas' states in two consecutive loops over S. The first loop
-    should call the :py:meth:`~.Area.collect_inputs` method on each area to make it buffer its inputs from the overall network. Then, in the second loop, the 
-    :py:meth:`~Area.forward` method should be called on each area of S to apply its corresponding :py:meth:`~Area.state_merge_strategy` and 
-    :py:meth:`~.Area.transformation` to the buffered inputs. This splitting of input collection and forward transformation allows for parallelization of areas.
+    should call the :py:meth:`~.Area.collect_inputs` method on each area to make it collect, sum and buffer its inputs from the overall network. Then, in the second loop, the 
+    :py:meth:`~Area.forward` method should be called on each area of S to sum the buffered inputs and apply the area's :py:meth:`~.Area.transformation`. 
+    This splitting of input collection and forward transformation allows for parallelization of areas.
     
     :param index: Sets the :py:attr:`~.Area.index` of this area.
     :type index: int
@@ -317,16 +312,16 @@ class Area(torch.nn.Module):
     :type output_time_frame_accumulator: :py:class:`.TimeFrameAccumulator`
     :param input_connections: Sets the :py:meth:`~.Area.input_connections` of this area.
     :type input_connections: List[:py:class:`.Connection`]
-    :param input_dimensionality: Sets the :py:meth:`~.Area.input_dimensionality` of this area.
-    :type input_dimensionality: int
+    :param input_shape: Sets the :py:meth:`~.Area.input_shape` of this area.
+    :type input_shape: List[int]
+    :param output_shape: Sets the :py:meth:`~.Area.output_shape` of this area.
+    :type output_shape: List[int]
     :param output_connections: Sets the :py:meth:`~.Area.output_connections` of this area.
     :type output_connections: List[:py:class:`.Connection`]
     :param transformation: Sets the :py:meth:`~.Area.transformation` of this area. If a st
     :type transformation: torch.nn.Module
     :param update_rate: Sets the :py:meth:`~.Area.update_rate` of this area.
     :type update_rate: float
-    :param state_merge_strategy: Sets the :py:meth:`~.Area.state_merge_strategy` of this area.
-    :type state_merge_strategy: callable, optional, defaults to None
     :return: A new area.
     :rtype: :py:class:`.Area`
     """
@@ -334,20 +329,30 @@ class Area(torch.nn.Module):
     def __init__(self, index: int, 
                  output_time_frame_accumulator: TimeFrameAccumulator, 
                  input_connections: List[Connection], 
-                 input_dimensionality: int,
+                 input_shape: List[int],
+                 output_shape: List[int],
                  output_connections: List[Connection],
                  transformation: torch.nn.Module, 
-                 update_rate: float, 
-                 state_merge_strategy: callable = None) -> "Area":
+                 update_rate: float) -> "Area":
         
         # Call the parent constructor
         super().__init__()
+        
+        # Ensure input validity
+        if not isinstance(input_shape, list) or not all(isinstance(dim, int) and dim > 0 for dim in input_shape):
+            raise TypeError(f"The input_shape of area {index} must be a list of positive integers but was {input_shape}.")
+        
+        if not isinstance(output_shape, list) or not all(isinstance(dim, int) and dim > 0 for dim in output_shape):
+            raise TypeError(f"The output_shape of area {index} must be a list of positive integers but was {output_shape}.")
+        if not output_shape == list(output_time_frame_accumulator._time_frame.state.shape[1:]):
+            raise ValueError(f"The output_shape of area {index} must match the shape of the state of its output_time_frame_accumulator but was {output_shape} and {output_time_frame_accumulator.time_frame.state.shape[1:].as_list()}, respectively.")
         
         # Set properties
         self.index = index # Must be set first
         self.output_time_frame_accumulator = output_time_frame_accumulator
         self.input_connections = input_connections
-        self._input_dimensionality = input_dimensionality
+        self._input_shape = input_shape
+        self._output_shape = output_shape
         self.output_connections = output_connections
         
         # Check input validity
@@ -358,8 +363,7 @@ class Area(torch.nn.Module):
         
         self.update_rate = update_rate
         self._update_count = 0
-        self.state_merge_strategy = state_merge_strategy
-        self._input_states = None # Will store the buffered input states updated by collect_inputs
+        self._input_state = None # Will store the buffered input states updated by collect_inputs
 
     @property
     def index(self) -> int:
@@ -429,11 +433,18 @@ class Area(torch.nn.Module):
         self._input_connections = new_value 
 
     @property
-    def input_dimensionality(self) -> int:
-        """:return: The dimensionality of the input to this area. This is the sum of all input dimensionalities if the state merge strategy is None.
+    def input_shape(self) -> int:
+        """:return: The shape of the input to this area for a single instance (i.e. excluding the batch-dimension that is assumed to be at index 0 of the actual input).
         :rtype: int
         """
-        return self._input_dimensionality
+        return self._input_shape
+
+    @property
+    def output_shape(self) -> int:
+        """:return: The shape of the output of this area for a single instance (i.e. excluding the batch-dimension that is assumed to be at index 0 of the actual output). The output is the state held in the :py:meth:`~.Area.output_time_frame_accumulator` and hence has same shape.
+        :rtype: int
+        """
+        return self._output_shape
 
     @property
     def output_connections(self) -> Set[Connection]:
@@ -487,39 +498,22 @@ class Area(torch.nn.Module):
         :rtype: int"""
         return self._update_count
     
-    @property
-    def state_merge_strategy(self) -> callable:
-        """:return: The state-merge-strategy of this area. This is a function mapping from a <input area index, state tensor> dictionary to a single torch.nn.Tensor. It is used to combine the inputs to this area during :py:meth:`~.Area.collect_inputs`. If set to None, this function will not be used and the transformation of self needs to be able to process the dictionary of inputs. :py:class:`.Source` objects must not have a state-merge-strategy because they have no inputs.
-        :rtype: callable"""
-        return self._state_merge_strategy
-
-    @state_merge_strategy.setter
-    def state_merge_strategy(self, new_value: callable) -> None:
-        
-        # Ensure input validity
-        if new_value != None:
-            if not callable(new_value):
-                raise TypeError(f"The state_merge_strategy was expected to be a callable but is a {type(new_value)}.")
-        
-        # Set property
-        self._state_merge_strategy = new_value
-
     def collect_inputs(self, current_time: float) -> None:
-        """Calls the :py:meth:`~.Connection.forward` method of all incoming connections to get the current inputs, applies the :py:meth:`~.Area.state_merge_strategy`
-        of self (if not None) and buffers the result for later use by the :py:meth:`~.Area.forward` method.
+        """Calls the :py:meth:`~.Connection.forward` method of all incoming connections to get the current inputs, sums them up and buffers 
+        the result for later use by the :py:meth:`~.Area.forward` method. Since the inputs are summed, it is necessary that they are all of the same shape. 
         
         :param current_time: The current time of the simulation used to time-discount the states of the input areas.
         :type current_time: float
         :rtype: None
         """
 
-        # Collect all inputs
-        self._input_states = {}
-        for connection in self.input_connections:
-           self._input_states[connection.from_area_index] = connection.forward(current_time=current_time).state
-            
-        # Apply merge strategy
-        if self._state_merge_strategy != None: self._input_states = self._state_merge_strategy(self._input_states)
+        # Initalize input state
+        self._input_state = None
+        
+        # Accumulate inputs
+        tmp = list(self.input_connections)
+        if len(tmp) > 0: self._input_state = tmp[0].forward(current_time=current_time).state
+        for connection in tmp[1:]: self._input_state += connection.forward(current_time=current_time).state
 
     def forward(self) -> None:
         """Assuming :py:meth:`~.Area.collect_inputs` has been run on all areas of the simulation just beforehand, this method passes the buffered inputs through
@@ -531,10 +525,10 @@ class Area(torch.nn.Module):
         current_time = self._update_count / self.update_rate
 
         # Retrieve inputs
-        if self._input_states == None:
+        if self._input_state == None:
             raise ValueError(f"The input_states of area {self.index} are None. Run collect_inputs() on all areas before calling forward().")
-        new_state = self._input_states
-        self._input_states = None
+        new_state = self._input_state
+        self._input_state = None
 
         # Apply transformation to the states
         if not self._transformation == None: new_state = self._transformation.forward(new_state)
@@ -568,6 +562,99 @@ class Area(torch.nn.Module):
         """Returns a string representation of the area."""
         return f"Area(index={self._index}, update_rate={self._update_rate}, update_count={self._update_count})"
 
+class Port(torch.nn.Module):
+
+    def __init__(self, area_index: int) -> "Port":
+        super().__init__()
+        self._area_index = area_index
+
+    @property
+    def area_index(self) -> int:
+        return self._area_index
+    
+    @property
+    def input_signal_shape(self) -> List[int]:
+        raise NotImplementedError("The input_signal_shape property must be implemented by subclasses of Port.")
+    
+    @property
+    def output_signal_shape(self) -> List[int]:
+        raise NotImplementedError("The output_signal_shape property must be implemented by subclasses of Port.")
+    
+    @property
+    def modulator_shape(self) -> List[int]:
+        raise NotImplementedError("The modulator_shape property must be implemented by subclasses of Port.")
+    
+    def forward(self, input_signal: torch.Tensor, modulator: torch.Tensor = None) -> torch.Tensor:
+        if modulator == None:
+            modulator = torch.ones((input_signal.shape[0], *self.modulator_shape), device=input_signal.device, dtype=input_signal.dtype)
+
+        
+    
+
+class AreaTransformation(torch.nn.Module):
+
+    class LinearRecursive(torch.nn.Module):
+
+        def __init__(self, area_input_dimensionality, area_output_dimensionality) -> "AreaTransformation.LinearRecursive":
+            super().__init__()
+            self.area_input_dimensionality = area_input_dimensionality
+            self.area_output_dimensionality = area_output_dimensionality
+
+            self.A = torch.nn.Parameter(torch.randn((area_output_dimensionality, area_output_dimensionality))) # Transforms recurrent part
+            self.B = torch.nn.Parameter(torch.randn((area_output_dimensionality, area_input_dimensionality - area_output_dimensionality))) # Transform the input from other areas
+            
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+
+            # Seperate recurrent part and other area input part
+            x_self = x[:, :self.area_output_dimensionality]
+            x_other = x[:, self.area_output_dimensionality:]
+
+            # Transform inputs
+            y_self = torch.matmul(x_self, self.A.T)
+            y_other = torch.matmul(x_other, self.B.T)
+            y = y_self + y_other
+
+            # Output
+            return y
+
+
+class ConnectionTransformation(torch.nn.Module):
+
+    class MoveToSlot(torch.nn.Module):
+
+        def __init__(self, from_area_output_dimensionality, to_area_input_dimensionality, to_area_output_dimensionality, slot: str) -> "AreaTransformation.LinearRecursive":
+            # Call super constructor
+            super().__init__()
+            
+            # Validate input
+            if not slot in ["self", "other"]:
+                raise ValueError(f"The slot must be either 'self' or 'other', but was set to '{slot}'.")
+            if not self.from_area_output_dimensionality == self.to_area_output_dimensionality:
+                    raise ValueError(f"When moving to the 'self' slot, the from_area_output_dimensionality must be equal to the to_area_output_dimensionality, but they are {self.from_area_output_dimensionality} and {self.to_area_output_dimensionality}, respectively.")
+            if not self.from_area_output_dimensionality < self.to_area_input_dimensionality:
+                raise ValueError(f"The from_area_output_dimensionality must be smaller than the to_area_input_dimensionality, but they are {self.from_area_output_dimensionality} and {self.to_area_input_dimensionality}, respectively.")
+            
+            # Set properties            
+            self.from_area_output_dimensionality = from_area_output_dimensionality
+            self.to_area_input_dimensionality = to_area_input_dimensionality
+            self.to_area_output_dimensionality = to_area_output_dimensionality
+            self.slot = slot
+            
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+
+            # Prepare output
+            batch_size = x.shape[0]
+            y = torch.zeros((batch_size, self.to_area_input_dimensionality), device=x.device, dtype=x.dtype)
+            
+            # Move to slot
+            if self.slot == "self":
+                y[:, :self.to_area_output_dimensionality] = x
+            else: # Other slot
+                y[:, self.to_area_output_dimensionality:] = x
+            
+            # Output
+            return y
+        
 class Source(Area):
     """The source :py:class:`.Area` is a special area because it streams the input to the other areas. In order to set it up for the simulation of a trial,
     load stimuli via the :py:meth:`~.Source.load_stimulus_batch method. Then, during each call to the :py:meth:`.~Area.collect_inputs` method, one :py:class:`.TimeFrame` 
@@ -579,6 +666,8 @@ class Source(Area):
     :type index: int
     :param output_time_frame_accumulator: Sets the :py:meth:`~.Area.time_frame_accumulator` of this area. 
     :type output_time_frame_accumulator: :py:class:`.TimeFrameAccumulator`
+    :param output_shape: Sets the :py:meth:`~.Area.output_shape` of this area.
+    :type output_shape: List[int]
     :param output_connections: Sets the :py:meth:`~.Area.output_connections` of this area.
     :type output_connections: Dict[int, :py:class:`.Connection`]
     :param update_rate: Sets the :py:meth:`~.Area.update_rate` of this area.
@@ -587,12 +676,14 @@ class Source(Area):
     :rtype: :py:class:`.Source`
     """
 
-    def __init__(self, index: int, output_time_frame_accumulator: TimeFrameAccumulator, output_connections: Dict[int, Connection], update_rate: float, data_loader: torch.utils.data.DataLoader=None) -> "Source":
+    def __init__(self, index: int, output_time_frame_accumulator: TimeFrameAccumulator, output_shape: List[int], output_connections: Dict[int, Connection], update_rate: float, data_loader: torch.utils.data.DataLoader=None) -> "Source":
 
         # Call the parent constructor
         super().__init__(index=index,
                          output_time_frame_accumulator=output_time_frame_accumulator,
                          input_connections=set([]),
+                         input_shape=[],
+                         output_shape=output_shape,
                          output_connections=output_connections,
                          transformation=torch.nn.Identity(),
                          update_rate=update_rate)
@@ -622,12 +713,6 @@ class Source(Area):
 
         # Set
         self._data_loader = new_value
-
-    @Area.state_merge_strategy.setter
-    def state_merge_strategy(self, new_value: callable) -> None:
-        
-        if new_value != None:
-            raise ValueError("Sources must not have a state_merge_strategy")
 
     @property
     def stimulus_batch(self) -> Deque[TimeFrame]:
@@ -681,12 +766,12 @@ class Source(Area):
             if not current_time == new_time_frame.time_point: raise ValueError(f"The collect_inputs method of Source {self.index} expected to be called next at time-point {new_time_frame.time_point} but was called at time-point {current_time}.")
 
             # Store a reference to the current time-frame for later
-            self._input_states = new_time_frame.state
+            self._input_state = new_time_frame.state
             
         else:
             # No more time-frames to pop, simply create array of zeros to be added to the output time-frame accumulator in forward()
             current_time_frame = self.output_time_frame_accumulator.time_frame(current_time=current_time)
-            self._input_states = torch.zeros_like(current_time_frame.state)
+            self._input_state = torch.zeros_like(current_time_frame.state)
 
 class Target(Area):
     """This class is a subclass of :py:class:`.Area` and has the same functionality as a regular area except that it has no output connections.
@@ -697,27 +782,31 @@ class Target(Area):
     :type output_time_frame_accumulator: :py:class:`.TimeFrameAccumulator`
     :param input_connections: Sets the :py:meth:`~.Area.input_connections` of this area.
     :type input_connections: List[:py:class:`.Connection`]
+    :param input_shape: Sets the :py:meth:`~.Area.input_shape` of this area.
+    :type input_shape: List[int]
+    :param output_shape: Sets the :py:meth:`~.Area.output_shape` of this area.
+    :type output_shape: List[int]
     :param transformation: Sets the :py:meth:`~.Area.transformation` of this area.
     :type transformation: torch.nn.Module
     :param update_rate: Sets the :py:meth:`~.Area.update_rate` of this area.
     :type update_rate: float
-    :param state_merge_strategy: Sets the :py:meth:`~.Area.state_merge_strategy` of this area.
-    :type state_merge_strategy: callable, optional, defaults to None
     """
 
     def __init__(self, index: int, 
                  output_time_frame_accumulator: TimeFrameAccumulator, 
                  input_connections: List[Connection],
+                 input_shape: List[int],
+                 output_shape: List[int],
                  transformation: torch.nn.Module, 
-                 update_rate: float, 
-                 state_merge_strategy: callable = None) -> "Target":
+                 update_rate: float) -> "Target":
         super().__init__(index=index, 
                  output_time_frame_accumulator=output_time_frame_accumulator, 
                  input_connections=input_connections, 
+                 input_shape=input_shape,
+                 output_shape = output_shape,
                  output_connections=None,
                  transformation=transformation, 
-                 update_rate=update_rate, 
-                 state_merge_strategy=state_merge_strategy)
+                 update_rate=update_rate)
      
     @Area.output_connections.setter
     def output_connections(self, new_value: List[Connection]) -> None:
@@ -921,11 +1010,6 @@ class BrIANN(torch.nn.Module):
             if "transformation" in area_configuration.keys():
                 exec("global transformation; transformation = " + area_configuration["transformation"])
                 area_configuration["transformation"] = transformation
-
-            if "state_merge_strategy" in area_configuration.keys():
-                global state_merge_strategy
-                exec("global state_merge_strategy; state_merge_strategy = " + area_configuration["state_merge_strategy"])
-                area_configuration["state_merge_strategy"] = state_merge_strategy
 
             if "dataset_index" in area_configuration.keys():
                 dataset_index = area_configuration["dataset_index"]

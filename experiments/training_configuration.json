@@ -1,0 +1,51 @@
+{
+    "source_configurations": [
+        {
+            "type": "Source",
+            "index": 0,
+            "initial_state": "torch.zeros(1)",
+            "output_shape": [1],
+            "update_rate": 10.0,
+            "dataset_index": 0
+        }
+    ],
+
+    "target_configurations": [
+        {
+            "type": "Target",
+            "index": 1,
+            "initial_state": "torch.zeros(3)",
+            "input_shape": [4],
+            "output_shape": [3],
+            "transformation": "torch.nn.Sequential(torch.nn.Linear(4, 3), torch.nn.Sigmoid())",
+            "update_rate": 10.0
+        }
+    ],
+
+    "regular_area_count": 3,
+    "regular_area_input_shape": [5],
+    "regular_area_output_shape": [3],
+    "regular_area_update_rate": 10.0,
+    "random_seed": 42,
+    "connection_probability": 0.5,
+    
+    "network":
+    {
+        "name": "ExampleNetwork",
+        "decay_rate": 0.1,
+        "batch_size": 16
+    },
+    
+    "datasets":
+    [
+        {
+            "type": "Sinusoids",
+            "index": 0,
+            "instance_count": 100, 
+            "duration": 10.0, 
+            "sampling_rate": 10, 
+            "frequency_count": 3, 
+            "noise_range": 0.0
+        }
+    ]
+}

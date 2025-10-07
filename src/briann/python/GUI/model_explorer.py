@@ -10,7 +10,6 @@ customtkinter.set_default_color_theme("blue")  # Themes: "blue" (standard), "gre
 import sys, os
 sys.path.append(os.path.abspath(""))
 from briann.python.network import core as bpnc
-from src.briann.python.training import data_management as bptdm
 import networkx as nx   
 import tkinter as tk
 from typing import Tuple, List
