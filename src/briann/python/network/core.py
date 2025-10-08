@@ -1,6 +1,6 @@
 "This module collects all necessary components to build a BrIANN model."
 import torch
-from typing import List, Dict, Deque, Set, Any
+from typing import List, Dict, Deque, Set, Any, Tuple
 import sys
 import matplotlib.pyplot as plt
 import os
@@ -174,6 +174,196 @@ class TimeFrameAccumulator():
     def __repr__(self) -> str:
         return f"TimeFrameAccumulator(decay_rate={self.decay_rate}, state shape={self._time_frame.state.shape}, time_point={self._time_frame.time_point})"
         
+class Port():
+
+    def __init__(self, signaling_connections: List["Connection"], modulating_connections: List["Connection"], signal_shape: List[int], modulator_shape: List[int], area_index: int) -> "Port":
+        
+        # Call super
+        super().__init__()
+        
+        # Set properties
+        self._signaling_connections = signaling_connections
+        self._signal_shape = signal_shape
+        self._modulating_connections = modulating_connections
+        self.modulator_shape = modulator_shape
+        self._area_index = area_index
+
+    @property
+    def area_index(self) -> int:
+        return self._area_index
+    
+    @property
+    def signaling_input_shape(self) -> List[int]:
+        # Contact all signaling connections and tell them to adjust their output shape
+
+        pass
+    
+    @property
+    def modulating_input_shape(self) -> List[int]:
+        # Contact all modulating connections and tell them to adjust their output shape
+        
+        pass
+
+    def add_connection(self, connection: "Connection", role: str) -> None:
+        """Adds a connection to the port.
+        
+        :param connection: The connection to be added.
+        :type connection: :py:class:`.Connection`
+        :param role: The role of the connection, being either 'signalling' or 'modulating'.
+        :type role: str
+        :rtype: None
+        """
+
+        # Input validity
+        if not isinstance(connection, Connection): raise TypeError(f"When adding a connection to a port of area {self._area_index}, the connection must be a Connection object, not a {type(connection)}.")
+        
+        if not isinstance(role, str): raise TypeError(f"When adding a connection to a port of area {self._area_index}, the role must be a str, not a {type(role)}.")
+        if not role in ["signaling", "modulating"]: raise ValueError(f"When adding a connection to a port of area {self._area_index}, the role must be 'signaling', or 'modulating', not {role}.")
+
+        # If the connection output has the right shape, add the connection
+        if role == "signaling":
+            if not connection.output_shape == self._signal_shape: raise ValueError(f"When adding a signaling connection to a port of area {self._area_index}, the connection's output shape {connection.output_shape} must be the same as the signal_shape {self._signal_shape} required by the port.")
+            self._signaling_connections.append(connection)
+
+        elif role == "modulating":
+            if not connection.output_shape == self._modulator_shape: raise ValueError(f"When adding a modulating connection to a port of area {self._area_index}, the connection's output shape {connection.output_shape} must be the same as the modulator_shape {self._modulator_shape} required by the port.")
+            self._modulating_connections.append(connection)
+
+    def remove_connection(self, connection: "Connection", role: str) -> None:
+        """Remove a connection from the port. Assumes that the connection is currently held by the port and throws an error otherwise.
+        
+        :param connection: The connection to be removed.
+        :type connection: :py:class:`.Connection`
+        :param role: The role of the connection, being either 'signalling' or 'modulating'.
+        :type role: str
+        :rtype: None"""
+
+
+        # Input validity
+        if not isinstance(connection, Connection): raise TypeError(f"When removing a connection from a port of area {self._area_index}, the connection must be a Connection object, not a {type(connection)}.")
+        
+        if not isinstance(role, str): raise TypeError(f"When removing a connection to a port of area {self._area_index}, the role must be a str, not a {type(role)}.")
+        if not role in ["signaling", "modulating"]: raise ValueError(f"When removing a connection to a port of area {self._area_index}, the role must be 'signaling', or 'modulating', not {role}.")
+
+        # If the connection output has the right shape, add the connection
+        if role == "signaling":
+            if not connection in self._signaling_connections: raise ValueError(f"When removing a signaling connection from a port of area {self._area_index}, the is expected to be held by the port.")
+            self._signaling_connections.remove(connection)
+
+        elif role == "modulating":
+            if not connection in self._modulating_connections: raise ValueError(f"When removing a modulating connection from a port of area {self._area_index}, the is expected to be held by the port.")
+            self._modulating_connections.remove(connection)
+
+    def collect_inputs(self, current_time: float) -> Tuple[torch.Tensor, torch.Tensor]:
+        """This method calls the :py:meth:`~.Connection.forward` method of all :py:meth:`~.Port.signaling_connections` to get the current inputs and sums them up. Then it does
+        the same for the :py:meth:`~.Port.modulating_connections` and return both sums. 
+        
+        :param current_time: The current time of the simulation used to time-discount the states of the input areas.
+        :type current_time: float
+        :return: (X_s, X_m), where X_s is the sum all signaling inputs and X_m is the sum of all modulating inputs. These are None, if no such connections are registered with the Port.
+        :rtype: Tuple[torch.Tensor, torch.Tensor]
+        """
+
+        # Initalize outputs
+        X_s = None
+        X_m = None
+
+        # Collect inputs from all signaling connections and sum them up
+        if 0 < len(self._signaling_connections):
+            tmp = list(self._signaling_connections)
+            if len(tmp) > 0: X_s = tmp[0].forward(current_time=current_time).state
+            for connection in tmp[1:]: X_s += connection.forward(current_time=current_time).state
+
+        # Collect inputs from all modulating connections and sum them up
+        if 0 < len(self._modulating_connections):
+            tmp = list(self._signaling_connections)
+            if len(tmp) > 0: X_m = tmp[0].forward(current_time=current_time).state
+            for connection in tmp[1:]: X_m += connection.forward(current_time=current_time).state
+
+        # Output
+        return X_s, X_m
+
+class ConnectionTransformation(torch.nn.Module):
+    """Superclass for a transformation to be placed on a :py:class:`.Connection`. This default implementation only perform the identity transformation on its input.
+    
+    :param input_shape: Sets the :py:meth:`~ConnectionTransformation.input_shape` property.
+    :type input_shape: List[int]
+    :param output_shape: Sets the :py:meth:`~ConnectionTransformation.output_shape` property.
+    :type output_shape: List[int]
+    :return: An instance of this class.
+    :rtype: ConnectionTransformation.
+    """
+
+    def __init__(self, input_shape: List[int], output_shape: List[int]):
+
+        # Call super
+        super().__init__()
+
+        # Properties
+        self.input_shape = input_shape
+        self.output_shape = output_shape
+
+    @property
+    def input_shape(self, ) -> List[int]:
+        """:return: The shape of the input to this transformation, disregarding the initial batch axis.
+        :rtype: List[int]
+        """
+        return self._input_shape
+    
+    @input_shape.setter
+    def input_shape(self, new_value: List[int]) -> None:
+        
+        # Check input validity
+        if not isinstance(new_value, List) or not all([isinstance(entry, int) for entry in new_value]): 
+            raise TypeError(f"The input_shape of ConnectionTransformation is expected to be a list of ints but was {new_value}.")
+
+        # Update 
+        self._input_shape = new_value
+
+    @property
+    def output_shape(self, ) -> List[int]:
+        """:return: The shape of the output of this transformation, disregarding the initial batch axis.
+        :rtype: List[int]
+        """
+        return self._output_shape
+    
+    @output_shape.setter
+    def output_shape(self, new_value: List[int]) -> None:
+        
+        # Check output validity
+        if not isinstance(new_value, List) or not all([isinstance(entry, int) for entry in new_value]): 
+            raise TypeError(f"The output_shape of ConnectionTransformation is expected to be a list of ints but was {new_value}.")
+
+        # Update 
+        self._output_shape = new_value
+
+    def forward(self, x):
+        return x
+
+class LinearConnectionTransformation(ConnectionTransformation):
+    """A simple linear transformation to be placed on a :py:class:`.Connection`. The input is first flattened along all axes except the first (batch axis) and 
+    then passed through a regular :py:class:`torch.nn.Linear` layer before being reshaped to fit the output shape. Construction of this object allow for keyword arguments
+    that further configure the linear transformation taken from torch, i.e. bias, device, dtype.
+    
+    :param input_shape: Sets the :py:meth:`~ConnectionTransformation.input_shape` property.
+    :type input_shape: List[int]
+    :param output_shape: Sets the :py:meth:`~ConnectionTransformation.output_shape` property.
+    :type output_shape: List[int]
+    :return: An instance of this class.
+    :rtype: ConnectionTransformation.
+    """
+
+    def __init__(self, input_shape: List[int], output_shape: List[int], **kwargs) -> "LinearConnectionTransformation":
+
+
+        # Super
+        super().__init__(input_shape=input_shape, output_shape=output_shape)
+
+        # Choose parameters
+        input_dimensionality = torch.prod(input_shape)
+        output_dimensionality = torch.prod(output_shape)
+        self._linear = torch.nn.Linear(in_features = input_dimensionality, out_features = output_dimensionality, **kwargs)
+
 class Connection(torch.nn.Module):
     """A connection between two :py:class:`Area` objects. This is analogous to a neural tract between areas of a biological neural network that 
     not only sends information but also converts it between the reference frames of the input and output area. It thus has a 
@@ -562,35 +752,7 @@ class Area(torch.nn.Module):
         """Returns a string representation of the area."""
         return f"Area(index={self._index}, update_rate={self._update_rate}, update_count={self._update_count})"
 
-class Port(torch.nn.Module):
-
-    def __init__(self, area_index: int) -> "Port":
-        super().__init__()
-        self._area_index = area_index
-
-    @property
-    def area_index(self) -> int:
-        return self._area_index
     
-    @property
-    def input_signal_shape(self) -> List[int]:
-        raise NotImplementedError("The input_signal_shape property must be implemented by subclasses of Port.")
-    
-    @property
-    def output_signal_shape(self) -> List[int]:
-        raise NotImplementedError("The output_signal_shape property must be implemented by subclasses of Port.")
-    
-    @property
-    def modulator_shape(self) -> List[int]:
-        raise NotImplementedError("The modulator_shape property must be implemented by subclasses of Port.")
-    
-    def forward(self, input_signal: torch.Tensor, modulator: torch.Tensor = None) -> torch.Tensor:
-        if modulator == None:
-            modulator = torch.ones((input_signal.shape[0], *self.modulator_shape), device=input_signal.device, dtype=input_signal.dtype)
-
-        
-    
-
 class AreaTransformation(torch.nn.Module):
 
     class LinearRecursive(torch.nn.Module):
