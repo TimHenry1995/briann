@@ -5,6 +5,10 @@ import threading
 import time
 import sys
 from typing import List, Any
+import sys
+import os
+sys.path.append(os.path.abspath(""))
+from briann.python.utilities import callbacks as bpuc
 
 class Observer():
 
@@ -65,8 +69,7 @@ class Observer():
             
             self.identifier = f"{self.method_name}({(self.argument_names)})"
 
-
-if __name__ == "__main__":   
+if __name__ == "1__main__":   
     class A():
 
         def __init__(self, x):
@@ -143,4 +146,55 @@ if __name__ == "__main__":
     t3.join()
 
     print("Done!")
-        
+
+class A():
+
+    def __init__(self, x):
+        self.x=x
+
+    @property
+    def x(self): return self._x 
+
+    @x.setter
+    def x(self, new_value): 
+        print("inside a.x")
+        self._x = new_value
+
+class B(A):
+
+    def __init__(self, x):
+        super().__init__(x=x)
+        bpuc.CallbackManager.add_callback_to_attribute(B, self, 'x', B.callback)
+
+    def callback(obj, name, value):
+        print(obj, name, value)
+
+if __name__ == "2__main__":
+    a = A(x=2)
+    b = B(x=1)
+
+    a.x=5
+    b.x = 3
+
+    import torch
+
+    linear = torch.nn.Linear(3,5, bias=False)
+    for p in linear.parameters():
+        print(p.shape)
+    print(linear.bias==None)
+    
+import json
+
+class One():
+    def __init__(self,x):
+        self.x=x
+
+class Two():
+    def __init__(self, one):
+        self.one=one
+
+if __name__ == "__main__":
+    one = One(4)
+    two = Two(one)
+
+    json.dumps(two)

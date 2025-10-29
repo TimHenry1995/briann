@@ -786,7 +786,6 @@ class StateVisualizerLineChart(AreaStateVisualizer):
         plt.title(f"Area {self.bpnc.index}")
         plt.draw()
     
-
 if __name__ == "__main__":
     
     path = bpufm.map_path_to_os(path="tests/briann 1.json")

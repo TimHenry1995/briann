@@ -1,14 +1,16 @@
 "This module collects all necessary components to build a BrIANN model."
 import torch
 from typing import List, Dict, Deque, Set, Any, Tuple
-import sys
-import matplotlib.pyplot as plt
-import os
+import sys, os
 sys.path.append(os.path.abspath(""))
 from src.briann.python.network import area_transformations as bpnat
+from src.briann.python.network import connection_transformations as bpnct
 from src.briann.python.training import data_management as bptdm
-import networkx as nx
 from briann.python.utilities import callbacks as bpuc
+from src.briann.python.utilities import core as bpuco
+
+import networkx as nx
+from abc import ABC, abstractmethod
 
 class TimeFrame():
     """A time-frame in the simulation that holds a temporary state of an :py:class:`.Area`. 
@@ -173,115 +175,217 @@ class TimeFrameAccumulator():
 
     def __repr__(self) -> str:
         return f"TimeFrameAccumulator(decay_rate={self.decay_rate}, state shape={self._time_frame.state.shape}, time_point={self._time_frame.time_point})"
-        
-class Port():
+ 
+class Merger(bpuco.Adapter):
+    """This class (and in particular its forward method) is to be used inside the :py:meth:`~.Area.collect_inputs` method to merge all the 
+    collected inputs into one :py:class:`torch.Tensor`.  
+    """
+    
+    @abstractmethod
+    def forward(self, x: Dict[int, torch.Tensor]) -> torch.Tensor:
+        """
+        :param x: A dictionary of [int, tensor] where a key is an index of a connection and a value is a tensor to be processed. This input is assumed to be non-empty and an exception will be raised if the assumption is violated.
+        :type x: Dict[int, torch.Tensor]
+        :return: A single tensor that is the combination of the values of `x`.
+        :rtype: :py:class:`torch.Tensor`
+        """
 
-    def __init__(self, signaling_connections: List["Connection"], modulating_connections: List["Connection"], signal_shape: List[int], modulator_shape: List[int], area_index: int) -> "Port":
-        
-        # Call super
+class AdditiveMerger(Merger):
+    """This merger adds all inputs."""
+
+    def __init__(self) -> "AdditiveMerger":
         super().__init__()
-        
-        # Set properties
-        self._signaling_connections = signaling_connections
-        self._signal_shape = signal_shape
-        self._modulating_connections = modulating_connections
-        self.modulator_shape = modulator_shape
-        self._area_index = area_index
 
-    @property
-    def area_index(self) -> int:
-        return self._area_index
-    
-    @property
-    def signaling_input_shape(self) -> List[int]:
-        # Contact all signaling connections and tell them to adjust their output shape
+    def forward(self, x: Dict[int, torch.Tensor]) -> torch.Tensor:
+        """Adds all tensors stored in the values of input dictionary `x`.
 
-        pass
-    
-    @property
-    def modulating_input_shape(self) -> List[int]:
-        # Contact all modulating connections and tell them to adjust their output shape
-        
-        pass
-
-    def add_connection(self, connection: "Connection", role: str) -> None:
-        """Adds a connection to the port.
-        
-        :param connection: The connection to be added.
-        :type connection: :py:class:`.Connection`
-        :param role: The role of the connection, being either 'signalling' or 'modulating'.
-        :type role: str
-        :rtype: None
+        :param x: A dictionary of [int, tensor] where a key is an index of a connection and a value is a tensor to be processed. This input is assumed to be non-empty and an exception will be raised if the assumption is violated.
+        :type x: Dict[int, torch.Tensor]
         """
 
         # Input validity
-        if not isinstance(connection, Connection): raise TypeError(f"When adding a connection to a port of area {self._area_index}, the connection must be a Connection object, not a {type(connection)}.")
+        if not isinstance(x, Dict) or not all([isinstance(key, int) and isinstance(value, torch.Tensor) for key, value in x.items()]): 
+            raise TypeError(f"The input x to a Merger's forward method should be of type Dict[int, torch.Tensor], not {type(x)}.")
         
-        if not isinstance(role, str): raise TypeError(f"When adding a connection to a port of area {self._area_index}, the role must be a str, not a {type(role)}.")
-        if not role in ["signaling", "modulating"]: raise ValueError(f"When adding a connection to a port of area {self._area_index}, the role must be 'signaling', or 'modulating', not {role}.")
+        if len(x) == 0: raise ValueError(f"The input x to a Merger's forward method should not be empty.")
 
-        # If the connection output has the right shape, add the connection
-        if role == "signaling":
-            if not connection.output_shape == self._signal_shape: raise ValueError(f"When adding a signaling connection to a port of area {self._area_index}, the connection's output shape {connection.output_shape} must be the same as the signal_shape {self._signal_shape} required by the port.")
-            self._signaling_connections.append(connection)
-
-        elif role == "modulating":
-            if not connection.output_shape == self._modulator_shape: raise ValueError(f"When adding a modulating connection to a port of area {self._area_index}, the connection's output shape {connection.output_shape} must be the same as the modulator_shape {self._modulator_shape} required by the port.")
-            self._modulating_connections.append(connection)
-
-    def remove_connection(self, connection: "Connection", role: str) -> None:
-        """Remove a connection from the port. Assumes that the connection is currently held by the port and throws an error otherwise.
-        
-        :param connection: The connection to be removed.
-        :type connection: :py:class:`.Connection`
-        :param role: The role of the connection, being either 'signalling' or 'modulating'.
-        :type role: str
-        :rtype: None"""
-
-
-        # Input validity
-        if not isinstance(connection, Connection): raise TypeError(f"When removing a connection from a port of area {self._area_index}, the connection must be a Connection object, not a {type(connection)}.")
-        
-        if not isinstance(role, str): raise TypeError(f"When removing a connection to a port of area {self._area_index}, the role must be a str, not a {type(role)}.")
-        if not role in ["signaling", "modulating"]: raise ValueError(f"When removing a connection to a port of area {self._area_index}, the role must be 'signaling', or 'modulating', not {role}.")
-
-        # If the connection output has the right shape, add the connection
-        if role == "signaling":
-            if not connection in self._signaling_connections: raise ValueError(f"When removing a signaling connection from a port of area {self._area_index}, the is expected to be held by the port.")
-            self._signaling_connections.remove(connection)
-
-        elif role == "modulating":
-            if not connection in self._modulating_connections: raise ValueError(f"When removing a modulating connection from a port of area {self._area_index}, the is expected to be held by the port.")
-            self._modulating_connections.remove(connection)
-
-    def collect_inputs(self, current_time: float) -> Tuple[torch.Tensor, torch.Tensor]:
-        """This method calls the :py:meth:`~.Connection.forward` method of all :py:meth:`~.Port.signaling_connections` to get the current inputs and sums them up. Then it does
-        the same for the :py:meth:`~.Port.modulating_connections` and return both sums. 
-        
-        :param current_time: The current time of the simulation used to time-discount the states of the input areas.
-        :type current_time: float
-        :return: (X_s, X_m), where X_s is the sum all signaling inputs and X_m is the sum of all modulating inputs. These are None, if no such connections are registered with the Port.
-        :rtype: Tuple[torch.Tensor, torch.Tensor]
-        """
-
-        # Initalize outputs
-        X_s = None
-        X_m = None
-
-        # Collect inputs from all signaling connections and sum them up
-        if 0 < len(self._signaling_connections):
-            tmp = list(self._signaling_connections)
-            if len(tmp) > 0: X_s = tmp[0].forward(current_time=current_time).state
-            for connection in tmp[1:]: X_s += connection.forward(current_time=current_time).state
-
-        # Collect inputs from all modulating connections and sum them up
-        if 0 < len(self._modulating_connections):
-            tmp = list(self._signaling_connections)
-            if len(tmp) > 0: X_m = tmp[0].forward(current_time=current_time).state
-            for connection in tmp[1:]: X_m += connection.forward(current_time=current_time).state
+        # Merge
+        xs = list(x.values())
+        y = xs[0]
+        for x_i in xs[1:]:
+            y += x_i
 
         # Output
-        return X_s, X_m
+        return y
+
+class IndexBasedMerger(Merger):
+    """Maps the dimensions of the input tensors given to the :py:meth:`~.IndexBasedMerger.forward` method to the output tensor.
+    
+    :param connection_index_to_input_flatten_axes: Sets the :py:meth:`~.IndexBasedMerger.connection_index_to_input_flatten_axes` property of this instance.
+    :type connection_index_to_input_flatten_axes: Dict[int, Tuple[int,int]]
+    :param connection_index_to_output_indices: Sets the :py:meth:`~.IndexBasedMerger.connection_index_to_output_indices` property of this instance.
+    :type connection_index_to_output_indices: Dict[int, Tuple[int,int]]
+    :param output_flatten_axes: Sets the :py:meth:`~.IndexBasedMerger.output_flatten_axes` property of this instance.
+    :type output_flatten_axes: Tuple[int,int]
+    :param final_output_shape: Sets the :py:meth:`~.IndexBasedMerger.final_output_shape` property of this instance.
+    :rtype: :py:class:`IndexBasedMerger`
+    """
+
+    def __init__(self, 
+                 connection_index_to_input_flatten_axes: Dict[int, Tuple[int,int]],
+                 connection_index_to_output_indices: Dict[int, List[int]], 
+                 output_flatten_axes: Tuple[int,int], 
+                 final_output_shape: List[int]) -> "IndexBasedMerger":
+        
+        # Super
+        super().__init__()
+        
+        # Properties
+        self._connection_index_to_input_flatten_axes = connection_index_to_input_flatten_axes
+        self._connection_index_to_output_indices = connection_index_to_output_indices
+        self._output_flatten_axes = output_flatten_axes
+        self._final_output_shape = final_output_shape
+
+    @property
+    def connection_index_to_input_flatten_axes(self) -> Dict[int, Tuple[int,int]]:
+        """:return:A dictionary mapping the :py:meth:`.Connection.index` to a Tuple of two axes, namely the start_axis and end_axis (inclusive). Axes spanned by the start_axis and end_axis are the axes along which the given input tensor will be flattened before its dimensions are mapped onto the output tensor. The calculation of these axes DOES include the initial batch axis and is thus assumed to be greater than 0.
+        :rtype: Dict[int, Tuple[int,int]]"""
+        return self._connection_index_to_input_flatten_axes
+    
+    @connection_index_to_input_flatten_axes.setter
+    def connection_index_to_input_flatten_axes(self, new_value: Dict[int, Tuple[int,int]]) -> None:
+
+        # Input validity
+        # - Type
+        if not isinstance(new_value, Dict) or not all([isinstance(key, int) for key in new_value.keys()]) or not all([isinstance(value, Tuple) for value in new_value.values()]) or not all([len(value) == 2 for value in new_value.values()]) or not all([all([isinstance(entry, int) for entry in value]) for value in new_value.values()]): raise TypeError(f"The connection_index_to_input_flatten_axes of an IndexBasedMerger was expected to be a Dict[int, Tuple[int,int]], but was tried to be set to {new_value}")
+
+        # - Values
+        for connection_index, axes in new_value:
+            if connection_index < 0: raise ValueError(f"An invalid connection index of {connection_index} < 0 was used when trying to set the connection_index_to_input_flatten_axes of an IndexBasedMerger.")
+            for axis in axes:
+                if axis < 1: raise ValueError(f"An illegal axis ({axis}) was tried to be set as flatten-axis when setting the connection_index_to_input_flatten_axes of an IndexBasedMerger.")
+
+        # Set value
+        self._connection_index_to_input_flatten_axes = new_value
+
+    @property
+    def connection_index_to_output_indices(self) -> Dict[int, List[int]]:
+        """:return:A dictionary mapping the :py:meth:`.Connection.index` to a list of indices. These latter indices specify where the dimensions of the connection's flattened input :py:class:`torch.Tensor` shall be moved to in the flattened output tensor. Important, the tensor_indices must all be unique and, when joined and sorted, give a contiguous list starting at 0. The length of this list must factor into the :py:meth:`~.IndexBasedMerger.final_output_shape` along the :py:meth:`~.IndexBasedMerger.output_flatten_axes`.
+        :rtype: Dict[int, List[int]]"""
+        return self._connection_index_to_output_indices
+    
+    @connection_index_to_output_indices.setter
+    def connection_index_to_output_indices(self, new_value: Dict[int, List[int]]) -> None:
+
+        # Input validity
+        # - Type
+        if not isinstance(new_value, Dict) or not all([isinstance(key, int) for key in new_value.keys()]) or not all([isinstance(value, List) for value in new_value.values()]) or not all([all([isinstance(entry, int) for entry in value]) for value in new_value.values()]): raise TypeError(f"The connection_index_to_output_indices of an IndexBasedMerger was expected to be a Dict[int, List[int]], but was tried to be set to {new_value}")
+
+        # - Values
+        for connection_index, tensor_indices in new_value:
+            if connection_index < 0: raise ValueError(f"An invalid connection index of {connection_index} < 0 was used when trying to set the connection_index_to_output_indices of an IndexBasedMerger.")
+            for tensor_index in tensor_indices:
+                if tensor_index < 0: raise ValueError(f"An illegal index ({tensor_index}) was tried to be set as tensor_index when setting the connection_index_to_output_indices of an IndexBasedMerger.")
+
+        # Set value
+        self._connection_index_to_output_indices = new_value
+
+    @property
+    def output_flatten_axes(self) -> Tuple[int,int]:
+        """:return: The first axis and last axis (inclusive) along which the output tensor shall initially be flattened while mapping the inputs onto it. The calculation of these axes DOES include the initial batch axis and is thus assumed to be greater than 0.
+        :rtype: Tuple[int,int]"""
+    
+        return self._output_flatten_axes
+    
+    @output_flatten_axes.setter
+    def output_flatten_axes(self, new_value: Tuple[int,int]) -> None:
+        # Input validity
+        # - Type
+        if not isinstance(new_value, Tuple) or not len(new_value) == 2 or not all([isinstance(entry, int) for entry in new_value]): raise TypeError(f"The output_flatten_axes of an IndexBasedMerger was expected to be a Tuple[int,int], but was tried to be set to {new_value}")
+
+        # - Values
+        for axis in new_value:
+            if axis < 1: raise ValueError(f"An illegal axis ({axis}) was tried to be set as output flatten-axis when setting the output_flatten_axes of an IndexBasedMerger.")
+
+        # Set property
+        self._output_flatten_axes = new_value
+        
+    @property
+    def final_output_shape(self) -> List[int]:
+        """:return: The final output shape after unflattening the output tensor along the specified `output_flatten_axes`. This shape does NOT include the initial batch axis, acknowledgeing that the batch-size is not necssarily known during configuration of this object.
+            :rtype: List[int]"""
+        
+        return self._final_output_shape
+    
+    @final_output_shape.setter
+    def final_output_shape(self, new_value: List[int]) -> None:
+
+        # Input validity
+        # - Type
+        if not isinstance(new_value, List) or not all([isinstance(entry, int) for entry in new_value]): raise TypeError(f"The final_output_shape of an IndexBasedMerger was expected to be a List[int], but was tried to be set to {new_value}")
+
+        # - Values
+        for entry in new_value:
+            if entry < 0: raise ValueError(f"An illegal index ({entry}) was tried to be set as final_output_shape of an IndexBasedMerger.")
+
+        # Set property
+        self._output_flatten_axes = new_value
+
+    def forward(self, x: Dict[int, torch.Tensor]) -> torch.Tensor:
+        """For each input tensor in `x`, this method first flattens the input along the axes specified during initialization and then moves the dimensions in their 
+        existing order to the indices of the output tensor that were specified during initialization. At this point, the output tensor is flat along the 
+        axes specified during initialization. Therafter, the output tensor is reshaped along those axes to reach its final output shape specified during initialization. 
+        It is thus assumed that the input tensors and the output tensor all have the same shape along the remaining axes.
+        
+        For example, assume the inputs have shapes
+        
+        - first input:  [batch_size, 2, 4, 5] which will be flattened to [batch_size, 2, 20] 
+        - second input: [batch_size, 2, 10]   which will be "flattened" to [batch_size, 2, 10]. 
+        
+        Then, assume the final output shape is [batch_size] + [2,10,3] which will be flattened to [batch_size] + [2,30]. 
+
+        The mapping is performed on the flattened tensors. For simplicity, say the 20 dimensions of the first input's axis 2 are mapped to the first 20 dimensions of 
+        the flat output's axis 2 and the 10 dimensions of the second input's axis 2 are mapped to the last 10 dimensions of the flat output's axis 2.
+        This is only possible when the remaining axes (here, the leading batch_size axis and axis 1) have the same dimensionalities for all inputs and y.
+        Finally, y is reshaped to its final output shape [batch_size] + [2,10,3] and returned.
+        
+        :param x: A dictionary of [int, tensor] where a key is an index of a connection and a value is a tensor to be processed. This input is assumed to be non-empty and an exception will be raised if the assumption is violated.
+        :type x: Dict[int, torch.Tensor]
+        """
+
+        # Input validity
+        if not isinstance(x, Dict) or not all([isinstance(key, int) and isinstance(value, torch.Tensor) for key, value in x.items()]): 
+            raise TypeError(f"The input x to a Merger's forward method should be of type Dict[int, torch.Tensor], not {type(x)}.")
+        
+        if len(x) == 0: raise ValueError(f"The input x to a Merger's forward method should not be empty.")
+
+        # Initialize output
+        batch_size = list(x.values())[0].shape[0]
+        dtype = list(x.values())[0].dtype
+        device = list(x.values())[0].device
+        global y
+        y = torch.zeros(size = [batch_size] + self._final_output_shape, dtype=dtype, device=device) # Shape == [batch_size] + final output_shape
+        y = torch.flatten(input=y, start_dim=self._output_flatten_axes[0], end_dim=self._output_flatten_axes[1]) # Shape == [batch_size] + flattened output shape
+
+        # Iterate inputs
+        y_axis = self._output_flatten_axes[0] # The axis where the new input dimensions will be inserted
+        global current_input_tensor
+        for connection_index, current_input_tensor in x.items():
+
+            # Flatten x along specified axes
+            current_input_tensor = torch.flatten(input=current_input_tensor, 
+                                           start_dim=self._connection_index_to_input_flatten_axes[connection_index][0], 
+                                           end_dim=self._connection_index_to_input_flatten_axes[connection_index][1])
+            
+            # Copy them to y
+            access_string = "[" + ",".join([":"]*(y_axis)) + ","  + str(self._connection_index_to_output_indices[connection_index]) + "]"
+            exec(f"global y, current_input_tensor; y{access_string} = current_input_tensor")
+
+        # Unflatten y
+        y = torch.unflatten(input=y, dim=y_axis, sizes=self._final_output_shape[(self._output_flatten_axes[0]-1):(self._output_flatten_axes[1])])
+
+        # Output
+        return y 
 
 class ConnectionTransformation(torch.nn.Module):
     """Superclass for a transformation to be placed on a :py:class:`.Connection`. This default implementation only perform the identity transformation on its input.
@@ -355,7 +459,6 @@ class LinearConnectionTransformation(ConnectionTransformation):
 
     def __init__(self, input_shape: List[int], output_shape: List[int], **kwargs) -> "LinearConnectionTransformation":
 
-
         # Super
         super().__init__(input_shape=input_shape, output_shape=output_shape)
 
@@ -363,6 +466,51 @@ class LinearConnectionTransformation(ConnectionTransformation):
         input_dimensionality = torch.prod(input_shape)
         output_dimensionality = torch.prod(output_shape)
         self._linear = torch.nn.Linear(in_features = input_dimensionality, out_features = output_dimensionality, **kwargs)
+
+        # Add callbacks
+        bpuc.CallbackManager.add_callback_to_attribute(target_class=LinearConnectionTransformation, target_instance=self, attribute_name='input_shape', callback=LinearConnectionTransformation._on_update_shape)
+        bpuc.CallbackManager.add_callback_to_attribute(target_class=LinearConnectionTransformation, target_instance=self, attribute_name='output_shape', callback=LinearConnectionTransformation._on_update_shape)
+
+    def _on_update_shape(obj: ConnectionTransformation, name: str, value: List[int]) -> None:
+        """This method is a callback that adjusts the model parameters of the transformation of self whenever the :py:meth:`~ConnectionTransformation.input_shape` or :py:meth:`~ConnectionTransformation.output_shape` is updated.
+        
+        :param obj: The object on which the input_shape is updated.
+        :type obj: :py:class:`.ConnectionTransformation`
+        :param name: The name of the attribute (i.e. 'input_shape' or 'output_shape) to be updated.
+        :type name: str
+        :param value: The new shape of the input or output, disregarding the batch_size as axis 0.
+        :type value: List[int]
+        :rtype: None"""
+
+        # Input validity
+        if name not in ["input_shape", "output_shape"]: raise ValueError(f"The callback LinearConnectionTransformation should only be added to the attributes 'input_shape' and 'output_shape', not to {name}.")
+        
+        # Extract relevant information
+        if name == 'input_shape':
+            input_dimensionality = torch.prod(value)
+            output_dimensionality = obj._linear.out_features
+        elif name == 'output_shape':
+            input_dimensionality = obj._linear.in_features
+            output_dimensionality = torch.prod(value)
+        
+        # Update parameters of self
+        obj._linear = torch.nn.Linear(in_features=input_dimensionality, 
+                                        out_features=output_dimensionality, 
+                                        bias=obj._linear.bias != None, 
+                                        device=obj._linear.device, 
+                                        dtype=obj._linear.dtype)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Input validity
+        if not len(x.shape) > 1 and x.shape[1:] == self.input_shape: raise ValueError(f"The input to connection transformation {self} was expected to be of shape {self.input_shape} (disregarding the initial batch-axis), but was found to {x.shape[1:]}.")
+        
+        # Transform
+        x = torch.flatten(input=x, start_dim=1)
+        x = self._linear(x)
+        y = torch.unflatten(input=x, dim=1, sizes=self.output_shape)
+
+        # Output
+        return y
 
 class Connection(torch.nn.Module):
     """A connection between two :py:class:`Area` objects. This is analogous to a neural tract between areas of a biological neural network that 
@@ -379,12 +527,17 @@ class Connection(torch.nn.Module):
     :param input_time_frame_accumulator: Used to set :py:meth:`~.Connection.input_time_frame_accumulator` of self.
     :type input_time_frame_accumulator: :py:class:`.TimeFrameAccumulator`
     :param transformation: Sets the :py:meth:`~.Connection.transformation` of the connection.
-    :type transformation: torch.nn.Module, optional, defaults to :py:class:`torch.nn.Identity`
+    :type transformation: :py:class:`~.ConnectionTransformation`
     :return: A new connection.
     :rtype: :py:class:`.Connection`
     """
 
-    def __init__(self, index: int, from_area_index: int, to_area_index: int, input_time_frame_accumulator: TimeFrameAccumulator, transformation: torch.nn.Module = torch.nn.Identity()) -> "Connection":
+    def __init__(self, 
+                 index: int, 
+                 from_area_index: int, 
+                 to_area_index: int, 
+                 input_time_frame_accumulator: TimeFrameAccumulator, 
+                 transformation: ConnectionTransformation) -> "Connection":
         
         # Call the parent constructor
         super().__init__()
@@ -395,7 +548,7 @@ class Connection(torch.nn.Module):
         self.to_area_index = to_area_index
         self.input_time_frame_accumulator = input_time_frame_accumulator
         self.transformation = transformation
-
+        
     @property
     def index(self) -> int:
         """:return: The index used to identify this connection in the overall model.
@@ -508,7 +661,9 @@ class Area(torch.nn.Module):
     :type output_shape: List[int]
     :param output_connections: Sets the :py:meth:`~.Area.output_connections` of this area.
     :type output_connections: List[:py:class:`.Connection`]
-    :param transformation: Sets the :py:meth:`~.Area.transformation` of this area. If a st
+    :param merger: Sets the :py:meth:`~.Area.merger` property of self.
+    :type merger: :py:class:`.Merger`
+    :param transformation: Sets the :py:meth:`~.Area.transformation` of this area.
     :type transformation: torch.nn.Module
     :param update_rate: Sets the :py:meth:`~.Area.update_rate` of this area.
     :type update_rate: float
@@ -522,7 +677,8 @@ class Area(torch.nn.Module):
                  input_shape: List[int],
                  output_shape: List[int],
                  output_connections: List[Connection],
-                 transformation: torch.nn.Module, 
+                 merger: Merger,
+                 transformation: torch.nn.Module,
                  update_rate: float) -> "Area":
         
         # Call the parent constructor
@@ -544,6 +700,7 @@ class Area(torch.nn.Module):
         self._input_shape = input_shape
         self._output_shape = output_shape
         self.output_connections = output_connections
+        self.merger = merger
         
         # Check input validity
         if not isinstance(transformation, torch.nn.Module):
@@ -665,6 +822,22 @@ class Area(torch.nn.Module):
             self._output_time_frame_accumulator = list(new_value)[0].input_time_frame_accumulator
     
     @property
+    def merger(self) -> Merger:
+        """:return: This merger is used to merge the input signals in the :py:meth:`~.Area.collect_inputs` method.
+        :rtype: :py:class:`.Merger`"""
+
+        return self._merger
+    
+    @merger.setter
+    def merger(self, new_value) -> None:
+
+        # Input validity
+        if new_value != None and not isinstance(new_value, Merger): raise TypeError(f"When setting the merger of area {self.index}, an object of type Merger should be given.")
+
+        # Set property
+        self._merger = new_value
+
+    @property
     def update_rate(self) -> float:
         """:return: The update-rate of this area.
         :rtype: float"""
@@ -700,10 +873,11 @@ class Area(torch.nn.Module):
         # Initalize input state
         self._input_state = None
         
+        # Collect inputs
+        x = dict({(connection.index, connection.forward(current_time=current_time).state) for connection in self.input_connections})
+        
         # Accumulate inputs
-        tmp = list(self.input_connections)
-        if len(tmp) > 0: self._input_state = tmp[0].forward(current_time=current_time).state
-        for connection in tmp[1:]: self._input_state += connection.forward(current_time=current_time).state
+        self._input_state = self.merger.forward(x=x)
 
     def forward(self) -> None:
         """Assuming :py:meth:`~.Area.collect_inputs` has been run on all areas of the simulation just beforehand, this method passes the buffered inputs through
@@ -752,71 +926,6 @@ class Area(torch.nn.Module):
         """Returns a string representation of the area."""
         return f"Area(index={self._index}, update_rate={self._update_rate}, update_count={self._update_count})"
 
-    
-class AreaTransformation(torch.nn.Module):
-
-    class LinearRecursive(torch.nn.Module):
-
-        def __init__(self, area_input_dimensionality, area_output_dimensionality) -> "AreaTransformation.LinearRecursive":
-            super().__init__()
-            self.area_input_dimensionality = area_input_dimensionality
-            self.area_output_dimensionality = area_output_dimensionality
-
-            self.A = torch.nn.Parameter(torch.randn((area_output_dimensionality, area_output_dimensionality))) # Transforms recurrent part
-            self.B = torch.nn.Parameter(torch.randn((area_output_dimensionality, area_input_dimensionality - area_output_dimensionality))) # Transform the input from other areas
-            
-        def forward(self, x: torch.Tensor) -> torch.Tensor:
-
-            # Seperate recurrent part and other area input part
-            x_self = x[:, :self.area_output_dimensionality]
-            x_other = x[:, self.area_output_dimensionality:]
-
-            # Transform inputs
-            y_self = torch.matmul(x_self, self.A.T)
-            y_other = torch.matmul(x_other, self.B.T)
-            y = y_self + y_other
-
-            # Output
-            return y
-
-
-class ConnectionTransformation(torch.nn.Module):
-
-    class MoveToSlot(torch.nn.Module):
-
-        def __init__(self, from_area_output_dimensionality, to_area_input_dimensionality, to_area_output_dimensionality, slot: str) -> "AreaTransformation.LinearRecursive":
-            # Call super constructor
-            super().__init__()
-            
-            # Validate input
-            if not slot in ["self", "other"]:
-                raise ValueError(f"The slot must be either 'self' or 'other', but was set to '{slot}'.")
-            if not self.from_area_output_dimensionality == self.to_area_output_dimensionality:
-                    raise ValueError(f"When moving to the 'self' slot, the from_area_output_dimensionality must be equal to the to_area_output_dimensionality, but they are {self.from_area_output_dimensionality} and {self.to_area_output_dimensionality}, respectively.")
-            if not self.from_area_output_dimensionality < self.to_area_input_dimensionality:
-                raise ValueError(f"The from_area_output_dimensionality must be smaller than the to_area_input_dimensionality, but they are {self.from_area_output_dimensionality} and {self.to_area_input_dimensionality}, respectively.")
-            
-            # Set properties            
-            self.from_area_output_dimensionality = from_area_output_dimensionality
-            self.to_area_input_dimensionality = to_area_input_dimensionality
-            self.to_area_output_dimensionality = to_area_output_dimensionality
-            self.slot = slot
-            
-        def forward(self, x: torch.Tensor) -> torch.Tensor:
-
-            # Prepare output
-            batch_size = x.shape[0]
-            y = torch.zeros((batch_size, self.to_area_input_dimensionality), device=x.device, dtype=x.dtype)
-            
-            # Move to slot
-            if self.slot == "self":
-                y[:, :self.to_area_output_dimensionality] = x
-            else: # Other slot
-                y[:, self.to_area_output_dimensionality:] = x
-            
-            # Output
-            return y
-        
 class Source(Area):
     """The source :py:class:`.Area` is a special area because it streams the input to the other areas. In order to set it up for the simulation of a trial,
     load stimuli via the :py:meth:`~.Source.load_stimulus_batch method. Then, during each call to the :py:meth:`.~Area.collect_inputs` method, one :py:class:`.TimeFrame` 
@@ -847,6 +956,7 @@ class Source(Area):
                          input_shape=[],
                          output_shape=output_shape,
                          output_connections=output_connections,
+                         merger=None,
                          transformation=torch.nn.Identity(),
                          update_rate=update_rate)
         
@@ -948,6 +1058,8 @@ class Target(Area):
     :type input_shape: List[int]
     :param output_shape: Sets the :py:meth:`~.Area.output_shape` of this area.
     :type output_shape: List[int]
+    :param merger: Sets the :py:meth:`~.Area.merger` property of self.
+    :type merger: :py:class:`.Merger`
     :param transformation: Sets the :py:meth:`~.Area.transformation` of this area.
     :type transformation: torch.nn.Module
     :param update_rate: Sets the :py:meth:`~.Area.update_rate` of this area.
@@ -959,6 +1071,7 @@ class Target(Area):
                  input_connections: List[Connection],
                  input_shape: List[int],
                  output_shape: List[int],
+                 merger: Merger,
                  transformation: torch.nn.Module, 
                  update_rate: float) -> "Target":
         super().__init__(index=index, 
@@ -967,6 +1080,7 @@ class Target(Area):
                  input_shape=input_shape,
                  output_shape = output_shape,
                  output_connections=None,
+                 merger=merger,
                  transformation=transformation, 
                  update_rate=update_rate)
      
@@ -1003,9 +1117,9 @@ class BrIANN(torch.nn.Module):
         """
 
     @property
-    def areas(self) -> Set[Area]:
+    def areas(self) -> torch.nn.ModuleList:
         """:return: The set of areas held by self.
-        :rtype: Set[:py:class:`.Area`]
+        :rtype: torch.nn.ModuleList
         """
 
         return self._areas
@@ -1035,9 +1149,9 @@ class BrIANN(torch.nn.Module):
         return result
     
     @property
-    def connections(self) -> Set[Connection]:
+    def connections(self) -> torch.nn.ModuleList:
         """:return: The set of internally stored :py:class:`.Connection`.
-        :rtype: Set[:py:class:`.Connection`]
+        :rtype: torch.nn.ModuleList
         """
         return self._connections
     
@@ -1138,23 +1252,23 @@ class BrIANN(torch.nn.Module):
             time_frame_accumulators[index] = time_frame_accumulator
 
         # Set connections
-        self._connections = set([])
-
+        self._connections = torch.nn.ModuleList([])
         for connection_configuration in configuration["connections"]:
             # Extract configuration
             index = connection_configuration["index"]
             from_area_index = connection_configuration["from_area_index"]
             to_area_index = connection_configuration["to_area_index"]
             time_frame_accumulator = time_frame_accumulators[from_area_index]
+            
             global transformation
             exec("global transformation; transformation = " + connection_configuration["transformation"])
             connection = Connection(index=index, from_area_index=from_area_index, to_area_index=to_area_index, input_time_frame_accumulator=time_frame_accumulator, transformation=transformation)
             
             # Insert the connection to the arrays
-            self._connections.add(connection)
+            self._connections.append(connection)
             
         # Set areas
-        self._areas = set([])
+        self._areas = torch.nn.ModuleList([])
         for area_configuration in configuration["areas"]:
             
             # Enrich configuration
@@ -1164,10 +1278,10 @@ class BrIANN(torch.nn.Module):
             area_configuration["output_time_frame_accumulator"] = time_frame_accumulators[area_index]
             if area_configuration["type"] != "Target": area_configuration["output_connections"] = self.get_connections_from(area_index=area_index)
 
-            if "hold_function" in area_configuration.keys(): 
-                global hold_function
-                exec("global hold_function; hold_function = " + area_configuration["hold_function"])
-                area_configuration["hold_function"] = hold_function
+            if "merger" in area_configuration.keys():
+                global merger
+                exec("global merger; merger = " + area_configuration["merger"])
+                area_configuration["merger"] = merger
 
             if "transformation" in area_configuration.keys():
                 exec("global transformation; transformation = " + area_configuration["transformation"])
@@ -1201,7 +1315,7 @@ class BrIANN(torch.nn.Module):
             exec("global area, tmp; area = " + area_type + "(**tmp)")
 
             # Store
-            self._areas.add(area)
+            self._areas.append(area)
            
     def get_topology(self) -> nx.DiGraph:
         """Converts the BrIANN network to a NetworkX DiGraph where each node is simply the :py:meth:`~.Area.index` of a corresponding :py:class:`.Area`
