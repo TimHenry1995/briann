@@ -29,7 +29,36 @@ def collate_function(sequences: List[Tuple[torch.Tensor, torch.Tensor]], **kwarg
     return X, y
 
 class Sinusoids(Dataset):
-    def __init__(self, instance_count: int, duration: float, sampling_rate: float, frequency_count: int, noise_range: float, *args, **kwargs) -> "Sinusoids":
+    """A dataset of sinusoids with varying frequencies. Each instance is a time-series of a sinusoid with one frequency and added noise.
+    The frequency is determined by the index of the instance. The dataset can return the input data, the labels, or both.
+    
+    :param instance_count: Sets the :py:meth:`~.Sinusoids.instance_count` property.
+    :type instance_count: int
+    :param duration: Sets the :py:meth:`~.Sinusoids.duration` property.
+    :type duration: float
+    :param sampling_rate: Sets the :py:meth:`~.Sinusoids.sampling_rate` property.
+    :type sampling_rate: float
+    :param frequency_count: Sets the :py:meth:`~.Sinusoids.frequency_count` property.
+    :type frequency_count: int
+    :param noise_range: Sets the :py:meth:`~.Sinusoids.noise_range` property.
+    :type noise_range: float
+    :param return_X: Sets the :py:meth:`~.Sinusoids.return_X` property.
+    :type return_X: bool
+    :param return_y: Sets the :py:meth:`~.Sinusoids.return_y` property.
+    :type return_y: bool
+
+    :return: The sinusoid dataset.
+    :rtype: Sinusoids
+    """
+
+    def __init__(self, instance_count: int, 
+                 duration: float, 
+                 sampling_rate: float, 
+                 frequency_count: int, 
+                 noise_range: float, 
+                 return_X: bool = True,
+                 return_y: bool = True,
+                 *args, **kwargs) -> "Sinusoids":
         # Call super
         super().__init__(*args, **kwargs)
 
@@ -49,12 +78,18 @@ class Sinusoids(Dataset):
         if not isinstance(noise_range, (int, float)): raise TypeError(f"The noise_range was expected to be a number but is {type(noise_range)}.")
         if noise_range < 0: raise ValueError(f"The noise_range was expected to be a non-negative number but is {noise_range}.")
 
-        # Set attributes
+        if not isinstance(return_X, bool): raise TypeError(f"The return_X was expected to be a boolean but is {type(new_value)}.")
+        
+        if not isinstance(return_y, bool): raise TypeError(f"The return_y was expected to be a boolean but is {type(new_value)}.")
+        
+        # Set properties
         self._instance_count = instance_count
         self._duration = (float)(duration)
         self._sampling_rate = sampling_rate
         self._frequency_count = frequency_count
         self._noise_range = noise_range
+        self._return_X = return_X
+        self._return_y = return_y
 
     @property
     def instance_count(self) -> int:
@@ -76,6 +111,14 @@ class Sinusoids(Dataset):
     def noise_range(self) -> float:
         return self._noise_range
 
+    @property
+    def return_X(self) -> bool:
+        return self._return_X
+    
+    @property
+    def return_y(self) -> bool:
+        return self._return_y
+    
     def __len__(self):
         return self.instance_count
     
@@ -92,7 +135,12 @@ class Sinusoids(Dataset):
         X[:,0] += noise
 
         # Output
-        return X, y
+        if self.return_X and not self.return_y:
+            return X
+        if not self.return_X and self.return_y:
+            return y
+        if self.return_X and self.return_y:
+            return X, y
 
 class PenStrokeMNIST(Dataset):
     

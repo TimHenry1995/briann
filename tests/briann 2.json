@@ -120,7 +120,7 @@
             "input_shape": [2],
             "output_shape": [3],
             "merger": "AdditiveMerger()",
-            "transformation": "torch.nn.Sequential(torch.nn.Linear(2, 3), torch.nn.Sigmoid())",
+            "transformation": "torch.nn.Sequential(torch.nn.Linear(2, 3), torch.nn.Softmax(dim=-1))",
             "update_rate": 5.0
         }
     ],

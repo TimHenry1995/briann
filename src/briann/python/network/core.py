@@ -980,11 +980,12 @@ class Source(Area):
             self._data_loader = None
             return
         
-        # Check input vaidity
+        # Check input validity
         if not isinstance(new_value, torch.utils.data.DataLoader): raise TypeError(f"Expected data_loader to be of type torch.utils.data.DataLoader but received {type(new_value)}.")
 
         # Set
         self._data_loader = new_value
+        self._data_iterator = iter(self._data_loader)
 
     @property
     def stimulus_batch(self) -> Deque[TimeFrame]:
@@ -1004,7 +1005,7 @@ class Source(Area):
         
         # Check input validity
         if self.data_loader == None: raise Exception(f"Unable to load the next stimulus batch for source {self.index} because the data_loader is None.")
-        X, y = next(iter(self.data_loader))
+        X, y = next(self._data_iterator)
         if not isinstance(X, torch.Tensor): raise TypeError(f"Input X was expected to be a torch.Tensor, but is {type(X)}.")
         if not len(X.shape) >= 2: raise ValueError(f"Input X was expected to have at least 2 axes, namely the first for instances of a batch and the second for time-frames, but it has {len(X.shape)} axes.")
         if len(X.shape) == 2: X = X[:,:,torch.newaxis]
@@ -1294,12 +1295,12 @@ class BrIANN(torch.nn.Module):
                 dataset_type = dataset_configuration["type"]
                 del dataset_configuration["type"]
                 del dataset_configuration["index"]
-
+                
                 try:
                     # Create data_loader
                     global dataset
                     exec("global dataset, dataset_configuration; dataset = bptdm." + dataset_type + "(**dataset_configuration)")
-                    area_configuration["data_loader"] = torch.utils.data.DataLoader(dataset=dataset, batch_size=batch_size)
+                    area_configuration["data_loader"] = torch.utils.data.DataLoader(dataset=dataset, batch_size=batch_size, drop_last=True)
                 except:
                     pass
 
