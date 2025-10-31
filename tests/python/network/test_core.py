@@ -14,8 +14,8 @@ class TestIndexBasedMerger(unittest.TestCase):
         """
         
         # Create instance
-        merger = bpnc.IndexBasedMerger(connection_index_to_tensor_flatten_axes={0:[2,3], 1:[2,2]},
-                                       connection_index_to_tensor_indices={0:[0,1,2,3], 1:[4,5]},
+        merger = bpnc.IndexBasedMerger(connection_index_to_input_flatten_axes={0:[2,3], 1:[2,2]},
+                                       connection_index_to_output_indices={0:[0,1,2,3], 1:[4,5]},
                                        output_flatten_axes=[2,2],
                                        final_output_shape=[2,6]
         )
@@ -47,8 +47,8 @@ class TestIndexBasedMerger(unittest.TestCase):
         """
 
         # Create instance
-        merger = bpnc.IndexBasedMerger(connection_index_to_tensor_flatten_axes={0:[2,3], 1:[2,2]},
-                                       connection_index_to_tensor_indices={0:[0,1,2,3], 1:[4,5]},
+        merger = bpnc.IndexBasedMerger(connection_index_to_input_flatten_axes={0:[2,3], 1:[2,2]},
+                                       connection_index_to_output_indices={0:[0,1,2,3], 1:[4,5]},
                                        output_flatten_axes=[2,2],
                                        final_output_shape=[2,6]
         )
@@ -82,8 +82,8 @@ class TestIndexBasedMerger(unittest.TestCase):
         """
 
         # Create instance
-        merger = bpnc.IndexBasedMerger(connection_index_to_tensor_flatten_axes={0:[2,3], 1:[2,2]},
-                                       connection_index_to_tensor_indices={0:[0,2,4,6], 1:[1,3,5]},
+        merger = bpnc.IndexBasedMerger(connection_index_to_input_flatten_axes={0:[2,3], 1:[2,2]},
+                                       connection_index_to_output_indices={0:[0,2,4,6], 1:[1,3,5]},
                                        output_flatten_axes=[2,2],
                                        final_output_shape=[2,7]
         )

@@ -691,7 +691,7 @@ class Area(torch.nn.Module):
         if not isinstance(output_shape, list) or not all(isinstance(dim, int) and dim > 0 for dim in output_shape):
             raise TypeError(f"The output_shape of area {index} must be a list of positive integers but was {output_shape}.")
         if not output_shape == list(output_time_frame_accumulator._time_frame.state.shape[1:]):
-            raise ValueError(f"The output_shape of area {index} must match the shape of the state of its output_time_frame_accumulator but was {output_shape} and {output_time_frame_accumulator.time_frame.state.shape[1:].as_list()}, respectively.")
+            raise ValueError(f"The output_shape of area {index} must match the shape of the state of its output_time_frame_accumulator but was {output_shape} and {output_time_frame_accumulator._time_frame.state.shape[1:].as_list()}, respectively.")
         
         # Set properties
         self.index = index # Must be set first
@@ -847,13 +847,13 @@ class Area(torch.nn.Module):
     def update_rate(self, new_value: float) -> None:
 
         # Check input validity
-        if not isinstance(new_value, float):
+        if not isinstance(new_value, float) and not isinstance(new_value, int):
             raise TypeError(f"The update_rate of area {self.index} has to be a float.")
         if not new_value > 0:
             raise ValueError(f"The update_rate of area {self.index} has to be positive.")
         
         # Set property
-        self._update_rate = new_value
+        self._update_rate = (float)(new_value)
 
     @property
     def update_count(self) -> int:
@@ -947,7 +947,7 @@ class Source(Area):
     :rtype: :py:class:`.Source`
     """
 
-    def __init__(self, index: int, output_time_frame_accumulator: TimeFrameAccumulator, output_shape: List[int], output_connections: Dict[int, Connection], update_rate: float, data_loader: torch.utils.data.DataLoader=None) -> "Source":
+    def __init__(self, index: int, output_time_frame_accumulator: TimeFrameAccumulator, output_shape: List[int], output_connections: Dict[int, Connection], update_rate: float) -> "Source":
 
         # Call the parent constructor
         super().__init__(index=index,
@@ -961,31 +961,7 @@ class Source(Area):
                          update_rate=update_rate)
         
         # Set properties
-        self.data_loader = data_loader
         self._stimulus_batch = None
-
-    @property
-    def data_loader(self) -> torch.utils.data.DataLoader:
-        """The dataloader used to fetch data in batches before streaming it time-frame by time-frame to other areas. It is assumed that the batches produced by the dataloader are torch.Tensors of shape [batch size, time-frame count, ...], where ... is the shape of an individual stimulus time-frame.
-        
-        :return: The data loader.
-        :rtype: torch.utils.data.DataLoader
-        """
-        return self._data_loader
-
-    @data_loader.setter
-    def data_loader(self, new_value) -> None:
-        # Handle None
-        if new_value == None: 
-            self._data_loader = None
-            return
-        
-        # Check input validity
-        if not isinstance(new_value, torch.utils.data.DataLoader): raise TypeError(f"Expected data_loader to be of type torch.utils.data.DataLoader but received {type(new_value)}.")
-
-        # Set
-        self._data_loader = new_value
-        self._data_iterator = iter(self._data_loader)
 
     @property
     def stimulus_batch(self) -> Deque[TimeFrame]:
@@ -996,16 +972,16 @@ class Source(Area):
         """
         return self._stimulus_batch
 
-    def load_next_stimulus_batch(self) -> None:
+    def load_next_stimulus_batch(self, X: torch.Tensor) -> None:
         """This method loads the next batch of stimuli that will be streamed to the other model areas during the simulation. 
 
+        :param X: A tensor of shape [batch_size, time_frame_count, ...] where the first axis corresponds to instances in the batch and the second axis to time-frames.
+        :type X: :py:class:`torch.Tensor`
         :raises Exception: if self.data_loader is None.
         :raises StopIteration: if the data_loader is empty.
         """
         
         # Check input validity
-        if self.data_loader == None: raise Exception(f"Unable to load the next stimulus batch for source {self.index} because the data_loader is None.")
-        X, y = next(self._data_iterator)
         if not isinstance(X, torch.Tensor): raise TypeError(f"Input X was expected to be a torch.Tensor, but is {type(X)}.")
         if not len(X.shape) >= 2: raise ValueError(f"Input X was expected to have at least 2 axes, namely the first for instances of a batch and the second for time-frames, but it has {len(X.shape)} axes.")
         if len(X.shape) == 2: X = X[:,:,torch.newaxis]
@@ -1075,6 +1051,7 @@ class Target(Area):
                  merger: Merger,
                  transformation: torch.nn.Module, 
                  update_rate: float) -> "Target":
+        
         super().__init__(index=index, 
                  output_time_frame_accumulator=output_time_frame_accumulator, 
                  input_connections=input_connections, 
@@ -1112,6 +1089,20 @@ class BrIANN(torch.nn.Module):
         self._load_from_configuration(configuration=configuration)
 
         # Set the time of the simulation
+        self._current_simulation_time = 0.0
+        """:return: The time that has passed since the start of the simulation. It is updated after each step of the simulation.
+        :rtype: float
+        """
+
+    def __init__(self, name, areas: List[Area], connections: List[Connection]) -> "BrIANN":
+        
+        # Call the parent constructor
+        super().__init__()
+        
+        # Set properties
+        self.name = name
+        self._areas = torch.nn.ModuleList(areas)
+        self._connections = torch.nn.ModuleList(connections)
         self._current_simulation_time = 0.0
         """:return: The time that has passed since the start of the simulation. It is updated after each step of the simulation.
         :rtype: float
@@ -1344,12 +1335,13 @@ class BrIANN(torch.nn.Module):
         # Output
         return G
 
-    def load_next_stimulus_batch(self) -> None:
+    def load_next_stimulus_batch(self, X: torch.Tensor | Dict[int, torch.Tensor]) -> None:
         """This method resets the :py:meth:`.~BrIANN.current_simulation_time` and all areas. It also makes the :py:class:`.Source` areas
         load their corresponding next batch of stimuli. It thus assumes that all source areas have a valid :py:meth:`~.Source.data_loader` set
         and that the data loaders are in sync with each other and non-empty.
 
-        :raises StopIteration: If a :py:meth:`.Source.data_loader` reached its end.
+        :param X: A tensor of shape [batch_size, time_frame_count, ...] or a Dict[int, :py:class:`torch.Tensor`] where the tensor's first axis corresponds to instances in the batch and the second axis to time-frames. If a dictionary is provided, then each key is an index of a source area and the value is the corresponding input tensor.
+        :type X: :py:class:`torch.Tensor` | Dict[int, :py:class:`torch.Tensor`]
         :rtype: None
         """
         
@@ -1360,7 +1352,12 @@ class BrIANN(torch.nn.Module):
         # Load the next batch of stimuli into the source areas
         for area in self.areas:
             if isinstance(area, Source):
-                area.load_next_stimulus_batch()
+                if isinstance(X, Dict):
+                    if area.index not in X.keys():
+                        raise ValueError(f"When providing a dictionary of inputs to load_next_stimulus_batch, the dictionary must contain an entry for each source area. However, source area {area.index} is missing.")
+                    area.load_next_stimulus_batch(X=X[area.index])
+                else:
+                    area.load_next_stimulus_batch(X=X)
 
         # Reset the simulation time
         self._current_simulation_time = 0.0

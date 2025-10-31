@@ -12,6 +12,8 @@ with open(path, 'r') as file:
     configuration = json.loads(file.read())
 
 briann = bpnc.BrIANN(configuration=configuration)
+
+
 training_loader = cp.deepcopy(briann.get_area_at_index(index=0).data_loader) # Area 0 is the source area
 class_count = training_loader.dataset.frequency_count
 

@@ -12,12 +12,13 @@ sys.path.append(os.path.abspath(""))
 from briann.python.network import core as bpnc
 import networkx as nx   
 import tkinter as tk
-from typing import Tuple, List
+from typing import Tuple, List, Iterator
 from CTkMenuBar import *
 import json
 from src.briann.python.utilities import file_management as bpufm
 import threading, time
 from abc import ABC, abstractmethod
+
 
 # Get the DPI
 root = tk.Tk()
@@ -32,6 +33,9 @@ class Animator(customtkinter.CTk):
     
     :param briann: The briann instance to be animated.
     :type briann: :py:class:`~src.briann.python.components.BrIANN`
+    :param data_iterator: An iterator that provides the data (X, y (ignored)) to be streamed to the briann model during the simulation.
+    :type data_iterator: Iterator
+    :return: An instance of this class.
     :rtype: :py:class:`.Animator`
     """
 
@@ -42,12 +46,14 @@ class Animator(customtkinter.CTk):
 
         return self._briann
 
-    def __init__(self, briann: bpnc.BrIANN) -> "Animator":
+    def __init__(self, briann: bpnc.BrIANN, data_iterator: Iterator) -> "Animator":
         # Call super
         super().__init__()
         
         # Start simulation
-        briann.load_next_stimulus_batch()
+        self._data_iterator = data_iterator
+        X, y = next(data_iterator)
+        briann.load_next_stimulus_batch(X=X)
 
         # Configure window
         self.title("BrIANN Animator")
@@ -165,9 +171,10 @@ class ControllerFrame(customtkinter.CTkFrame):
 
         # Ensure current simulation is paused
         self._is_playing = False
-
+        
         # Load next stimulus
-        self._briann.load_next_stimulus_batch()
+        X, y = next(self._data_iterator)
+        self._briann.load_next_stimulus_batch(X=X)
 
 class Canvas(tk.Canvas):
     """This class creates a canvas on which network components will be displayed. The canvas can be dragged around and has a reference grid in the background.
@@ -547,7 +554,7 @@ class Area(DraggableWidget):
         self._button.configure(fg_color='lightgray', text_color='black')
 
     def on_update_count_update(self, obj, name, value) -> None:
-        
+        print("Hi")
         # Display self as active
         self._button.configure(fg_color='orange', text_color='white')
 
@@ -788,11 +795,10 @@ class StateVisualizerLineChart(AreaStateVisualizer):
     
 if __name__ == "__main__":
     
-    path = bpufm.map_path_to_os(path="tests/briann 1.json")
-    with open(path, 'r') as file:
-        configuration = json.loads(file.read())
+    from experiments.configurations import briann_2 as briann_loader
 
-    briann = bpnc.BrIANN(configuration=configuration)
-    app = Animator(briann=briann)
+    briann = briann_loader.inference_configuration["model"]
+    data_iterator = briann_loader.inference_configuration["data_iterator"]
+    app = Animator(briann=briann, data_iterator=data_iterator)
     app.mainloop()
     
