@@ -43,6 +43,22 @@ class TestCallbackManager(unittest.TestCase):
         self.assertEqual(callback_name, "value")
         self.assertEqual(callback_value, 10)
 
+    def test_add_callback_to_private_attribute_single_object(self):
+
+        # Create instance
+        number = Number()
+        
+        # Add callback to value attribute
+        bpuc.CallbackManager.add_callback_to_attribute(target_class=Number, target_instance=number, attribute_name="_value", callback=set_value_callback)
+    
+        # Test whether callback is called on set value
+        global callback_obj, callback_name, callback_value
+        callback_obj = None; callback_name = None; callback_value = None
+        number.value = 10
+        self.assertEqual(callback_obj, number)
+        self.assertEqual(callback_name, "_value")
+        self.assertEqual(callback_value, 10)
+
     def test_add_callback_to_attribute_two_objects_one_set(self):
 
         # Create instance

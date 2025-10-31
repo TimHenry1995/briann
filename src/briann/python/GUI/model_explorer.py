@@ -72,7 +72,7 @@ class Animator(customtkinter.CTk):
         self._time_label.place(relx=0.5, rely=0.01, anchor=tk.N)
 
         # Add self as subscriber for briann simulation time
-        bpuc.CallbackManager.add_callback_to_attribute(target_class=bpnc.BrIANN, target_instance=briann, attribute_name='_current_simulation_time', callback=self.on_current_simulation_time_update)
+        bpuc.CallbackManager.add_callback_to_attribute(target_class=type(briann), target_instance=briann, attribute_name='_current_simulation_time', callback=self.on_current_simulation_time_update)
         
         # Controller
         controller_frame = ControllerFrame(briann=briann, network_visualizer=network_visualizer, master=self, corner_radius=0)
@@ -469,8 +469,8 @@ class Area(DraggableWidget):
         self._size = size
 
         # Link callbacks
-        bpuc.CallbackManager.add_callback_to_attribute(target_class=bpnc.Area, target_instance=bpnc_area, attribute_name='_update_count', callback=self.on_update_count_update)
-        bpuc.CallbackManager.add_callback_to_attribute(target_class=bpnc.BrIANN, target_instance=briann, attribute_name='_current_simulation_time', callback=self.on_current_simulation_time_update)
+        bpuc.CallbackManager.add_callback_to_attribute(target_class=type(bpnc_area), target_instance=bpnc_area, attribute_name='_update_count', callback=self.on_update_count_update)
+        bpuc.CallbackManager.add_callback_to_attribute(target_class=type(briann), target_instance=briann, attribute_name='_current_simulation_time', callback=self.on_current_simulation_time_update)
         bpuc.CallbackManager.add_callback_to_method(target_instance=bpnc_area, method_name='reset', callback= lambda caller, selfy=self: selfy.on_current_simulation_time_update(obj=None, name=None, value=None)) # Reset color when area is reset
         
         # Create button
@@ -554,7 +554,7 @@ class Area(DraggableWidget):
         self._button.configure(fg_color='lightgray', text_color='black')
 
     def on_update_count_update(self, obj, name, value) -> None:
-        print("Hi")
+        
         # Display self as active
         self._button.configure(fg_color='orange', text_color='white')
 
@@ -794,11 +794,11 @@ class StateVisualizerLineChart(AreaStateVisualizer):
         plt.draw()
     
 if __name__ == "__main__":
-    
     from experiments.configurations import briann_2 as briann_loader
 
     briann = briann_loader.inference_configuration["model"]
     data_iterator = briann_loader.inference_configuration["data_iterator"]
+    
     app = Animator(briann=briann, data_iterator=data_iterator)
     app.mainloop()
     
