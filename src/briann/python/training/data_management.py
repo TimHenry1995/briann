@@ -2,12 +2,15 @@
 import sys
 import os
 sys.path.append(os.path.abspath(""))
-from briann.python.utilities import random as bpur
+from briann.python.utilities import random as bpur, vggish_input
 from typing import Tuple
 import torch
 from torch.utils.data import Dataset, DataLoader
 from typing import List
 from src.briann.python.utilities import file_management as bpufm
+import numpy as np
+
+
 
 def collate_function(sequences: List[Tuple[torch.Tensor, torch.Tensor]], **kwargs) -> Tuple[torch.Tensor, torch.Tensor]:
     """Collate function to pad sequences to the same length.
@@ -58,9 +61,9 @@ class Sinusoids(Dataset):
                  noise_range: float, 
                  return_X: bool = True,
                  return_y: bool = True,
-                 *args, **kwargs) -> "Sinusoids":
+                 ) -> None:
         # Call super
-        super().__init__(*args, **kwargs)
+        super(Sinusoids, self).__init__()
 
         # Check input validity
         if not isinstance(instance_count, int): raise TypeError(f"The instance_count was expected to be an integer but is {type(instance_count)}.")
@@ -141,6 +144,52 @@ class Sinusoids(Dataset):
             return y
         if self.return_X and self.return_y:
             return X, y
+
+class VGGishSpectrograms(Dataset):
+    """A dataset of spectrogram slices as expected by VGGish, each instance is a spectrogram taken from the waveforms of the given `sinusoids` dataset. 
+    The `waveform` is treated as sampled at 16 kHz.
+
+    :param sinusoids: A dataset of sinusoids to convert to spectrograms.
+    :type sinusoids: Dataset
+    :return: The spectrogram dataset.
+    :rtype: Sinusoids
+    """
+
+    def __init__(self, sinusoids: Dataset
+                 ) -> None:
+        # Call super
+        super(VGGishSpectrograms, self).__init__()
+
+        # Check input validity
+        if not isinstance(sinusoids, Sinusoids): raise TypeError(f"The sinusoids argument was expected to be a Sinusoids Dataset instance but is of type {type(sinusoids)}.")
+        self._sinusoids_ = sinusoids
+        
+    @property
+    def return_X(self) -> bool:
+        return self._sinusoids_._return_X
+    
+    @property
+    def return_y(self) -> bool:
+        return self._sinusoids_._return_y
+    
+    def __len__(self):
+        return len(self._sinusoids_)
+    
+    def __getitem__(self, idx):
+        # Draw sinusoid from dataset
+        if self.return_X and self.return_y:
+            waveform, y = self._sinusoids_[idx]
+            X = vggish_input.waveform_to_examples(waveform.numpy())
+            X = torch.Tensor(X)
+            return X, y
+        elif self.return_X and not self.return_y:
+            waveform = self._sinusoids_[idx]
+            X = vggish_input.waveform_to_examples(waveform.numpy(), sample_rate=16000)
+            X = torch.Tensor(X)
+            return X
+        elif not self.return_X and self.return_y:
+            y = self._sinusoids_[idx]
+            return y
 
 class PenStrokeMNIST(Dataset):
     

@@ -522,7 +522,7 @@ class Area(DraggableWidget):
         
         # Add widgets to popup
         customtkinter.CTkLabel(popup, text="Add Visualizer", anchor=tk.CENTER).pack(expand=True, fill="x", padx=10, pady=10)
-        option_menu = customtkinter.CTkOptionMenu(popup, values=["Line Chart", "t-SNE", "Heatmap"])
+        option_menu = customtkinter.CTkOptionMenu(popup, values=["Line Chart", "Heatmap"])
         option_menu.pack(expand=True, fill="x", padx=10, pady=10)
         customtkinter.CTkButton(popup, text="Add", 
                                 command=lambda option_menu=option_menu, popup=popup, area=self: area._add_state_visualizer(option=option_menu.get(), popup=popup)
@@ -544,7 +544,9 @@ class Area(DraggableWidget):
         # Map selection option to visualizer
         if option == "Line Chart":
             self._state_visualizers.append(StateVisualizerLineChart(area=self._bpnc_area, canvas=self._canvas, current_simulation_time=self._briann.current_simulation_time, initial_x=self.x, initial_y=self.y, width=3, height=2))
-            
+        if option == "Heatmap":
+            self._state_visualizers.append(StateVisualizerHeatMap(area=self._bpnc_area, canvas=self._canvas, current_simulation_time=self._briann.current_simulation_time, initial_x=self.x, initial_y=self.y, width=3, height=2))
+
         # Destroy the popup
         popup.destroy()
     
@@ -792,9 +794,31 @@ class StateVisualizerLineChart(AreaStateVisualizer):
         plt.ylabel("State")
         plt.title(f"Area {self.bpnc.index}")
         plt.draw()
+
+class StateVisualizerHeatMap(AreaStateVisualizer):
+    """Visualizes the input of an area in a heatmap plot. It assumes that the input state has a shape of (channels, height, width)
+    and it then averages over the channel axis to create a 2D heatmap of shape (height, width). Only the first instance of a batch is displayed."""
+
+    def __init__(self, area: bpnc.Area, canvas: Canvas, current_simulation_time: float, initial_x: np.ndarray, initial_y: float, width: float, height: float) -> "StateVisualizerLineChart":
+        
+        super().__init__(area=area, canvas=canvas, current_simulation_time=current_simulation_time, initial_x=initial_x, initial_y=initial_y, width=width, height=height)
+        
+
+    def _update_plot(self, time_frame: bpnc.TimeFrame = None) -> None:
+        
+        # Call super
+        super()._update_plot(time_frame=time_frame)
+
+        # Update plot
+        plt.clf()
+                 
+        plt.imshow(np.mean(time_frame.state[0].cpu().detach().numpy(), axis=0).T, aspect='auto') # We take the first instance [0] and then average over the channel axis [0]
+        
+        plt.title(f"Area {self.bpnc.index}")
+        plt.draw()
     
 if __name__ == "__main__":
-    from experiments.configurations import briann_2 as briann_loader
+    from experiments.configurations import vggish as briann_loader
 
     briann = briann_loader.inference_configuration["model"]
     data_iterator = briann_loader.inference_configuration["data_iterator"]

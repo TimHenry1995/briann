@@ -1,6 +1,8 @@
 "This module collects all necessary components to build a BrIANN model."
 import torch
 from typing import List, Dict, Deque, Set, Any, Tuple
+from collections import deque
+
 import sys, os
 sys.path.append(os.path.abspath(""))
 from src.briann.python.network import area_transformations as bpnat
@@ -627,7 +629,9 @@ class Connection(torch.nn.Module):
 
         # Read input
         input_state = self.input_time_frame_accumulator.time_frame(current_time=current_time).state
-
+        try:self.transformation(input_state)
+        except Exception as e:
+            bla=1
         # Apply the transformation to the time frame
         transformed_state = self.transformation(input_state)
         
@@ -1052,6 +1056,7 @@ class Target(Area):
                  transformation: torch.nn.Module, 
                  update_rate: float) -> "Target":
         
+        # Cqll to super
         super().__init__(index=index, 
                  output_time_frame_accumulator=output_time_frame_accumulator, 
                  input_connections=input_connections, 
@@ -1061,11 +1066,59 @@ class Target(Area):
                  merger=merger,
                  transformation=transformation, 
                  update_rate=update_rate)
-     
+
+        # Set properties
+        self._output_states = deque([])
+    
+
     @Area.output_connections.setter
     def output_connections(self, new_value: List[Connection]) -> None:
         if new_value != None:
             raise ValueError("A Target area does not accept any output connections.")
+
+    def forward(self) -> None:
+        """Assuming :py:meth:`~.Area.collect_inputs` has been run on all areas of the simulation just beforehand, this method passes the buffered inputs through
+        the `:py:meth:`~.Area.transformation` of self (if exists) and passes the result to the :py:meth:`.TimeFrameAccumulator.accumulate` of self.
+        """
+
+        # Call to super
+        super().forward()
+
+        # Collect state time-frame
+        current_time = self._update_count / self.update_rate
+        new_time_frame = self.output_time_frame_accumulator.time_frame(current_time=current_time)
+        self._output_states.append(new_time_frame.state)
+
+    def extract_current_output_batch(self, final_states_only: bool = True) -> torch.Tensor:
+        """Extracts the current output batch held by this target area. This is done by collecting all time-frames obtained by :py:meth:`~.Target.forward` and held in buffer and stacking them into a tensor
+        that is returned. After extraction, the internal buffer of time-frames is cleared.
+        
+        :param final_states_only: Indicates whether only the final, i.e. current output states shall be returned or the entire sequence.
+        :type final_states_only: bool, optional, defaults to True
+        :return: The output batch held by this target area. This is a tensor of shape [batch_size, time_frame_count, ...], where ... is the shape of the state of a single instance's time-frame of this area
+        :rtype: :py:class:`torch.Tensor`
+        """
+
+        # Ensure state validity
+        if not self._update_count == len(self._output_states): raise ValueError(f"While extracting the output time-frame, the internal update count of Target area {self.index} was found to not match the number of held output time-frames. Reset the area and try again.")
+        
+        # Early exit
+        if final_states_only:
+            self._output_states.clear()
+            return self.output_time_frame_accumulator.time_frame(current_time=self.update_count * self.update_rate)
+        
+        # Collect time-frames
+        time_frame_count = self.update_count
+        if time_frame_count == 0:
+            raise ValueError(f"The Target area {self.index} does not hold any output time-frames to extract.")
+        
+        # Stack into tensor
+        output_states = [self._output_states.popleft().state[:, torch.newaxis, :] for _ in range(time_frame_count)] # Popping entries clears the deque
+        output_batch = torch.stack(output_states, dim=1)
+
+        # Output
+        return output_batch
+    
 
 class BrIANN(torch.nn.Module):
     """This class functions as the network that holds together all its :py:class:`.Area`s and :py:class:`.Connection`s. Its name abbreviates Brain Inspired Artificial Neural Networks. 
@@ -1081,7 +1134,8 @@ class BrIANN(torch.nn.Module):
     """
     
     def __init__(self, configuration: Dict[str,Any]) -> "BrIANN":
-        
+        raise DeprecationWarning("The BrIANN(configuration) constructor is deprecated. Please use BrIANN(name, areas, connections) instead.")
+    
         # Call the parent constructor
         super().__init__()
 
@@ -1395,6 +1449,32 @@ class BrIANN(torch.nn.Module):
 
         # Outputs
         return due_areas
+
+    def extract_current_output_batch(self, final_states_only: bool = True) -> torch.Tensor | Dict[int, torch.Tensor]:
+        """Extracts the current output batch(es) held by the target area(s) of this model. This is done for each target area by either collecting the target area's current states
+        (if `final_states_only` is True) or the entire sequence of output frames (if `final_states_only` is False). 
+        After extraction, the target area's internal buffer of time-frames is cleared.
+        
+        :param final_states_only: Indicates whether only the final, i.e. current output states shall be returned or the entire sequence.
+        :type final_states_only: bool, optional, defaults to True
+        :return: If there is only a single target area, the output will be a torch.Tensor. Otherwise, it will be a dictionary for which a key is a target area's index and the corresponding value a tensor. Each such tensor is of shape [batch_size, time_frame_count, ...], where ... is the shape of the state of a single instance's time-frame of the corresponding target area.
+        :rtype: :py:class:`torch.Tensor` | Dict[int, :py:class:`torch.Tensor`]
+        """
+
+        # Input validity
+        if not isinstance(final_states_only, bool): raise TypeError(f"The input final_states_only was expected to be of type bool but was {type(final_states_only)}.")
+
+        # Collect outputs
+        outputs = dict({})
+        for area in self._areas:
+            if isinstance(area, Target):
+                outputs[area.index] = area.extract_current_output_batch(final_states_only=final_states_only)
+
+        # Return
+        if len(outputs.items) == 1:
+            return list(outputs.values())[0]
+        else:
+            return outputs
 
     def __repr__(self) -> str:
         string = "BrIANN\n"

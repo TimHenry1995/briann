@@ -23,12 +23,13 @@ classifiers = [
 
 # List external dependencies of your packages
 dependencies = [
-    "numpy>=2.2.5",
-    "torch>=2.8.0",
-    "matplotlib>=3.10.3",
-    "networkx>=3.4.2",
-    "customtkinter>=5.2.2",
-    "CTkMenuBar>=0.8"
+    "numpy==2.2.5",
+    "torch==2.8.0",
+    "matplotlib==3.10.3",
+    "networkx==3.4.2",
+    "customtkinter==5.2.2",
+    "CTkMenuBar==0.8",
+    "scipy==1.16.3"
 ]
 
 [project.optional-dependencies]

@@ -130,6 +130,9 @@ _data_iterator = iter(torch.utils.data.DataLoader(dataset=bptdm.Sinusoids(instan
 training_configuration = {
     "model": _briann,
     "data_iterator": _data_iterator,
+    "input_shape": [1],
+    "output_shape": [1],
+    "class_count": 3,
     "loss_function": torch.nn.CrossEntropyLoss(),
     "optimizer": torch.optim.SGD(_briann.parameters(), lr=0.01, momentum=0.9),
     "epoch_count": 5,
@@ -140,5 +143,8 @@ training_configuration = {
 inference_configuration = {
     "model": _briann,
     "data_iterator": _data_iterator,
+    "input_shape": [1],
+    "output_shape": [1],
+    "class_count": 3,
     "steps_per_batch": 10,
 }
