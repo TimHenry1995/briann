@@ -15,7 +15,7 @@ import tkinter as tk
 from typing import Tuple, List, Iterator
 from CTkMenuBar import *
 import json
-from src.briann.utilities import file_management as bpufm
+from briann.utilities import file_management as bpufm
 import threading, time
 from abc import ABC, abstractmethod
 

@@ -1,12 +1,12 @@
 import torch, sys, os
 sys.path.append(os.path.abspath(""))
-from src.briann.python.network import area_transformations as bpnat
-from src.briann.python.network import connection_transformations as bpnct
-from src.briann.python.network import core as bpnc
+from briann.network import area_transformations as bpnat
+from briann.network import connection_transformations as bpnct
+from briann.network import core as bpnc
 
-from src.briann.python.training import data_management as bptdm
-from briann.python.utilities import callbacks as bpuc
-from src.briann.python.utilities import core as bpuco
+from briann.training import data_management as bptdm
+from briann.utilities import callbacks as bpuc
+from briann.utilities import core as bpuco
 import numpy as np
 from typing import Set
 

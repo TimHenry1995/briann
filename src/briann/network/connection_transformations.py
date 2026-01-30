@@ -1,6 +1,6 @@
 import sys, os
 sys.path.append(os.path.abspath(""))
-from src.briann.python.utilities import core as bpuc
+from briann.utilities import core as bpuc
 import torch
 from typing import Tuple, List, Dict
 

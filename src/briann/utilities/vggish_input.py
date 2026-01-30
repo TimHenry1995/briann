@@ -18,7 +18,7 @@
 import numpy as np
 import sys, os
 sys.path.append(os.path.abspath(""))
-from briann.python.utilities import mel_features, vggish_params
+from briann.utilities import mel_features, vggish_params
 import torch
 
 def waveform_to_examples(data):
@@ -66,19 +66,3 @@ def waveform_to_examples(data):
             log_mel_examples, requires_grad=True)[:, None, :, :].float()
 
   return log_mel_examples
-
-
-def wavfile_to_examples(wav_file):
-  """Convenience wrapper around waveform_to_examples() for a common WAV format.
-
-  Args:
-    wav_file: String path to a file, or a file-like object. The file
-    is assumed to contain WAV audio data with signed 16-bit PCM samples.
-
-  Returns:
-    See waveform_to_examples.
-  """
-  wav_data, sr = wav_read(wav_file)
-  assert wav_data.dtype == np.int16, 'Bad sample type: %r' % wav_data.dtype
-  samples = wav_data / 32768.0  # Convert to [-1.0, +1.0]
-  return waveform_to_examples(samples, sr)

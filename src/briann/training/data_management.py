@@ -2,12 +2,12 @@
 import sys
 import os
 sys.path.append(os.path.abspath(""))
-from briann.python.utilities import random as bpur, vggish_input
+from briann.utilities import random as bpur, vggish_input
 from typing import Tuple
 import torch
 from torch.utils.data import Dataset, DataLoader
 from typing import List
-from src.briann.python.utilities import file_management as bpufm
+from src.briann.utilities import file_management as bpufm
 import numpy as np
 
 def collate_function(sequences: List[Tuple[torch.Tensor, torch.Tensor]], **kwargs) -> Tuple[torch.Tensor, torch.Tensor]:
