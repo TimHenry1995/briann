@@ -4,18 +4,18 @@ import tkinter as tk
 import customtkinter
 import numpy as np
 
-from briann.python.utilities import callbacks as bpuc
+from briann.utilities import callbacks as bpuc
 customtkinter.set_appearance_mode("Light")  # Modes: "System" (standard), "Dark", "Light"
 customtkinter.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
 import sys, os
 sys.path.append(os.path.abspath(""))
-from briann.python.network import core as bpnc
+from briann.network import core as bpnc
 import networkx as nx   
 import tkinter as tk
 from typing import Tuple, List, Iterator
 from CTkMenuBar import *
 import json
-from src.briann.python.utilities import file_management as bpufm
+from src.briann.utilities import file_management as bpufm
 import threading, time
 from abc import ABC, abstractmethod
 
@@ -522,7 +522,13 @@ class Area(DraggableWidget):
         
         # Add widgets to popup
         customtkinter.CTkLabel(popup, text="Add Visualizer", anchor=tk.CENTER).pack(expand=True, fill="x", padx=10, pady=10)
-        option_menu = customtkinter.CTkOptionMenu(popup, values=["Line Chart", "Heatmap"])
+        
+        option_values = []
+        for visualizer in [StateVisualizerLineChart, StateVisualizerHeatMap]:
+            if visualizer.is_compatible_with_state(input_shape=self._bpnc_area.output_time_frame_accumulator._time_frame.state.shape):
+                option_values.append(visualizer.NAME_TAG)
+
+        option_menu = customtkinter.CTkOptionMenu(popup, values=option_values)
         option_menu.pack(expand=True, fill="x", padx=10, pady=10)
         customtkinter.CTkButton(popup, text="Add", 
                                 command=lambda option_menu=option_menu, popup=popup, area=self: area._add_state_visualizer(option=option_menu.get(), popup=popup)
@@ -765,14 +771,31 @@ class AreaStateVisualizer(DraggableWidget):
         plt.figure(self.figure.number)
         
 class StateVisualizerLineChart(AreaStateVisualizer):
-    """Visualizes the input of an area in a 2D plot."""
+    """Plots a series of :py:clas:`~briann.python.network.core.TimeFrame`'s in a line-plot where the x-axis represents time, the y-axis represents deflection and there will be one line per channel.
+    This class assumes that the time-series is streamed to py:meth:`~briann.python.GUI.StateVisualizerLineChart._update_plot_` one time-frame at a time.
+    Each such time-frame is expected to be of shape (batch-size, channel-count). """
+
+    NAME_TAG = "Line Chart"
 
     def __init__(self, area: bpnc.Area, canvas: Canvas, current_simulation_time: float, initial_x: float, initial_y: float, width: float, height: float) -> "StateVisualizerLineChart":
+        
+        # FIRST Set Attributes (needed for initial plot)
         self.ts = np.empty(shape=[0,0])
         self.ys = np.empty(shape=[0,0])
-
+        
+        # Then Call super
         super().__init__(area=area, canvas=canvas, current_simulation_time=current_simulation_time, initial_x=initial_x, initial_y=initial_y, width=width, height=height)
         
+
+    @classmethod
+    def is_compatible_with_state(cls, input_shape: List[int]) -> bool:
+        """Checks whether the given input shape is compatible with this visualizer.
+        
+        :param input_shape: The time-frame's state's shape to be checked.
+        :type input_shape: List[int]
+        :return: True if the shae is compatible with this visualizer, False otherwise.
+        :rtype: bool"""
+        return len(input_shape) == 2 # (batch_size, features)
 
     def _update_plot(self, time_frame: bpnc.TimeFrame = None) -> None:
         
@@ -796,13 +819,28 @@ class StateVisualizerLineChart(AreaStateVisualizer):
         plt.draw()
 
 class StateVisualizerHeatMap(AreaStateVisualizer):
-    """Visualizes the input of an area in a heatmap plot. It assumes that the input state has a shape of (channels, height, width)
-    and it then averages over the channel axis to create a 2D heatmap of shape (height, width). Only the first instance of a batch is displayed."""
+    """Plots a series of :py:clas:`~briann.python.network.core.TimeFrame`'s in an evolving heatmap where the x-axis represents width, the y-axis represents height and the heatmap represents values.
+    It assumes that the input state has a shape of (batch-size, channels, height, width) where channels is 1 or 3 (grayscale or RGB) or any other number of channels which will then be averaged across.
+    An alternative accepted shape is (batch-size, height, width) for single-channel data.
+    The visualizer always plots only the first instance of the batch (index 0)."""
+
+    NAME_TAG = "Heatmap"
 
     def __init__(self, area: bpnc.Area, canvas: Canvas, current_simulation_time: float, initial_x: np.ndarray, initial_y: float, width: float, height: float) -> "StateVisualizerLineChart":
         
         super().__init__(area=area, canvas=canvas, current_simulation_time=current_simulation_time, initial_x=initial_x, initial_y=initial_y, width=width, height=height)
         
+    
+    @classmethod
+    def is_compatible_with_state(cls, input_shape: List[int]) -> bool:
+        """Checks whether the given input shape is compatible with this visualizer.
+        
+        :param input_shape: The time-frame's state's shape to be checked.
+        :type input_shape: List[int]
+        :return: True if the shae is compatible with this visualizer, False otherwise.
+        :rtype: bool"""
+        return len(input_shape) == 3 or (len(input_shape) == 4) # (batch_size, width, height) or (batch_size, channels, width, height)
+
 
     def _update_plot(self, time_frame: bpnc.TimeFrame = None) -> None:
         
@@ -811,18 +849,19 @@ class StateVisualizerHeatMap(AreaStateVisualizer):
 
         # Update plot
         plt.clf()
-                 
-        plt.imshow(np.mean(time_frame.state[0].cpu().detach().numpy(), axis=0).T, aspect='auto') # We take the first instance [0] and then average over the channel axis [0]
+        
+        if len(time_frame.state.shape) == 3: # (batch_size, height, width)
+            plt.imshow(time_frame.state[0].cpu().detach().numpy().T, aspect='auto') # We take the first instance [0]
+        else:
+            if len(time_frame.state.shape) == 4: # (batch_size, channel-count, height, width)
+                state = time_frame.state[0].cpu().detach().numpy()  # We take the first instance [0]
+                if state.shape[1] != 1 and state.shape[0] != 3: # Not just 1 or 3 channels, average across channels
+                    state = np.mean(state, axis=0, keepdims=True) # Shape now (1 channel, height, width)
+                
+                state = np.moveaxis(state, 0, -1) # Move channel axis to the end, shape now (height, width, channel-count)
+                state = np.moveaxis(state, 0, 1) # transpose width and height, shape now (width, height, channel-count)
+                plt.imshow(state, aspect='auto')
         
         plt.title(f"Area {self.bpnc.index}")
         plt.draw()
-    
-if __name__ == "__main__":
-    from experiments.configurations import vggish as briann_loader
-
-    briann = briann_loader.inference_configuration["model"]
-    data_iterator = briann_loader.inference_configuration["data_iterator"]
-    
-    app = Animator(briann=briann, data_iterator=data_iterator)
-    app.mainloop()
     

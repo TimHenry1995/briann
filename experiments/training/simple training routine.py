@@ -3,8 +3,8 @@ import torch
 import json, sys, os
 import copy as cp
 sys.path.append(os.path.abspath(""))
-from src.briann.python.utilities import file_management as bpufm
-from src.briann.python.network import core as bpnc
+from src.briann.utilities import file_management as bpufm
+from src.briann.network import core as bpnc
 
 # Load Configuration
 from experiments.configurations import example_briann as briann_loader

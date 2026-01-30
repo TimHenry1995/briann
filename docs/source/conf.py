@@ -2,27 +2,44 @@
 #
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
-import os
-import sys
-sys.path.insert(0, os.path.abspath(os.path.join('..', '..', 'src')))
+
+autodoc_default_options = {
+    "members": True,
+    "undoc-members": True,
+    "private-members": True
+}
+
+# For the full list of built-in configuration values, see the documentation:
+# https://www.sphinx-doc.org/en/master/usage/configuration.html
+
+import os, sys
+for x in os.walk('.'):
+  sys.path.insert(0, x[0])
+
+for x in os.walk('..'):
+  sys.path.insert(0, x[0])
+
+for x in os.walk(os.path.join("..","..")):
+  sys.path.insert(0, x[0])
+
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'briann'
-copyright = '2025, Tim Dick'
+copyright = '2026, Tim Dick'
 author = 'Tim Dick'
 release = '0.0.1'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ['sphinx.ext.autodoc', 'sphinx.ext.viewcode', 'sphinx.ext.todo']
+extensions = ['sphinx.ext.todo','sphinx.ext.viewcode','sphinx.ext.autodoc']
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
-
+language = 'Python'
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output

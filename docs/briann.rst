@@ -1,5 +1,5 @@
-briann.c\_plus\_plus package
-============================
+briann package
+==============
 
 Subpackages
 -----------
@@ -7,12 +7,15 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
-   briann.c_plus_plus.GPU
+   briann.GUI
+   briann.network
+   briann.training
+   briann.utilities
 
 Module contents
 ---------------
 
-.. automodule:: briann.c_plus_plus
+.. automodule:: briann
    :members:
    :show-inheritance:
    :undoc-members:

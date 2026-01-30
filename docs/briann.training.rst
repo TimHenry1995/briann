@@ -1,13 +1,13 @@
-briann.python.network package
-=============================
+briann.training package
+=======================
 
 Submodules
 ----------
 
-briann.python.network.components module
+briann.training.data\_management module
 ---------------------------------------
 
-.. automodule:: briann.python.network.components
+.. automodule:: briann.training.data_management
    :members:
    :show-inheritance:
    :undoc-members:
@@ -15,7 +15,7 @@ briann.python.network.components module
 Module contents
 ---------------
 
-.. automodule:: briann.python.network
+.. automodule:: briann.training
    :members:
    :show-inheritance:
    :undoc-members:

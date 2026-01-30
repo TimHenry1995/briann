@@ -10,8 +10,6 @@ from typing import List
 from src.briann.python.utilities import file_management as bpufm
 import numpy as np
 
-
-
 def collate_function(sequences: List[Tuple[torch.Tensor, torch.Tensor]], **kwargs) -> Tuple[torch.Tensor, torch.Tensor]:
     """Collate function to pad sequences to the same length.
     
