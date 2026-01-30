@@ -1,7 +1,0 @@
-- In the gui, when clicking on a node to open its pop-up, the pop-up only closes after hitting the add button for the visaulizer. If one clicks outside, the wrokflow breaks and the window gets unresponsive. Consider to add an (x) button to close the pop-up or close it autimatcially if one cicks outside the popup.
-
-- In the gui, sometimes creating a visualizer and dragging it to the side gives the following error:
-  File "/Users/timdick/Documents/Software Development/briann/src/briann/python/GUI/model_explorer.py", line 403, in _on_drag_motion
-    dx = self._initial_x + event.x - self._mouse_x
-                                     ^^^^^^^^^^^^^
-AttributeError: 'Area' object has no attribute '_mouse_x'

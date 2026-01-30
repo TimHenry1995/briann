@@ -1,4 +1,0 @@
-- a source cannot make sense of an input merge strategy
-- a source must not have any incoming connections
-- a target must not have any outcoming connections
-- the update rate of the source and the assigned dataset should be the same
