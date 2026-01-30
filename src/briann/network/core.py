@@ -5,9 +5,7 @@ from collections import deque
 
 import sys, os
 sys.path.append(os.path.abspath(""))
-from briann.network import area_transformations as bnat
-from briann.network import connection_transformations as bnct
-from briann.training import data_management as bptdm
+
 from briann.utilities import callbacks as bpuc
 from briann.utilities import core as bpuco
 
