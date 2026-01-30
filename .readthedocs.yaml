@@ -25,6 +25,5 @@ python:
       path: .
       extra_requirements:
         - docs
-        - gui
         - build
         
