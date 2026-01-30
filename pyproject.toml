@@ -10,7 +10,7 @@ where = ["src"]
 
 [project]
 name = "briann"
-version = "0.0.4"
+version = "0.0.5"
 authors = [
     { name = "Tim Dick"}
 ]

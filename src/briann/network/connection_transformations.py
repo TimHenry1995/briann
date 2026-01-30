@@ -5,8 +5,8 @@ import torch
 from typing import Tuple, List, Dict
 
 class Splitter(bpuc.Adapter):
-    """This class is to be used in the :py:meth:`~.Connection.forward` method. It takes an input x that is the current :py:meth:`.TimeFrame.state` from the sending 
-    :py:class:`.Area.output_time_frame_accumulator` and then splits off the part that is relevant to the calling :py:class:`.Connection` object."""
+    """This class is to be used in the :py:meth:`~briann.network.core.Connection.forward` method. It takes an input x that is the current :py:meth:`~briann.network.core.TimeFrame.state` from the sending 
+    :py:class:`~briann.network.core.Area.output_time_frame_accumulator` and then splits off the part that is relevant to the calling :py:class:`~briann.network.core.Connection` object."""
     
     def __init__(self) -> "Splitter":
         super().__init__()
@@ -15,16 +15,16 @@ class Splitter(bpuc.Adapter):
         pass
 
 class IndexBasedSplitter(torch.nn.Module):
-    """The IndexBasedSplitter maps its input to its output by using indices in the :py:meth:`~.IndexBasedSplitter.forward`. To configure this mapping,
+    """The IndexBasedSplitter maps its input to its output by using indices in the :py:meth:`~briann.network.core.IndexBasedSplitter.forward`. To configure this mapping,
     the following arguments are used.
 
-    :param input_flatten_axes: Sets the :py:meth:`~.IndexBasedSplitter.input_flatten_axes` of this object.
+    :param input_flatten_axes: Sets the :py:meth:`~briann.network.core.IndexBasedSplitter.input_flatten_axes` of this object.
     :type input_flatten_axes: Tuple[int,int]
-    :param input_indices: Sets the :py:meth:`~.IndexBasedSplitter.input_indices` of this object.
+    :param input_indices: Sets the :py:meth:`~briann.network.core.IndexBasedSplitter.input_indices` of this object.
     :type input_indices: List[int]
-    :param output_flatten_axes: Sets the :py:meth:`~.IndexBasedSplitter.output_flatten_axes` of this object.
+    :param output_flatten_axes: Sets the :py:meth:`~briann.network.core.IndexBasedSplitter.output_flatten_axes` of this object.
     :type output_flatten_axes: Tuple[int,int]
-    :param output_shape: Sets the :py:meth:`~.IndexBasedSplitter.output_shape` of this object.
+    :param output_shape: Sets the :py:meth:`~briann.network.core.IndexBasedSplitter.output_shape` of this object.
     :type output_shape: List[int]
     """
     
@@ -44,7 +44,7 @@ class IndexBasedSplitter(torch.nn.Module):
 
     @property
     def input_flatten_axes(self) -> Tuple[int,int]:
-        """:return: The axes along which the input will be flattened inside :py:meth:`~.IndexBasedSplitter.forward` before selecting entries from it. This is a Tuple of two ints, where the first int is the axis at which flattening starts and the second int is the axis (inclusive) at which it will end. 
+        """:return: The axes along which the input will be flattened inside :py:meth:`~briann.network.core.IndexBasedSplitter.forward` before selecting entries from it. This is a Tuple of two ints, where the first int is the axis at which flattening starts and the second int is the axis (inclusive) at which it will end. 
         :rtype: Tuple[int, int]"""
 
         return self._input_flatten_axes
@@ -63,7 +63,7 @@ class IndexBasedSplitter(torch.nn.Module):
 
     @property
     def input_indices(self) -> Dict[int, List[int]]:
-        """:return: A list of indices that specify which entries of the flattened input :py:class:`torch.Tensor` shall be moved to in the flattened output tensor. The length of this list must factor into :py:meth:`~IndexBasedSplitter.output_shape` along the :py:meth:`~IndexBasedSplitter.output_flatten_axes`.
+        """:return: A list of indices that specify which entries of the flattened input :py:class:`torch.Tensor` shall be moved to in the flattened output tensor. The length of this list must factor into :py:meth:`~briann.network.core.IndexBasedSplitter.output_shape` along the :py:meth:`~briann.network.core.IndexBasedSplitter.output_flatten_axes`.
         :rtype: List[int]"""
         return self._input_indices
     
@@ -103,7 +103,7 @@ class IndexBasedSplitter(torch.nn.Module):
 
     @property
     def output_shape(self) -> List[int]:
-        """:return: The desired shape for the :py:class:`torch.Tensor` that the :py:meth:`~.IndexBasedSplitter.forward` method shall output.
+        """:return: The desired shape for the :py:class:`torch.Tensor` that the :py:meth:`~briann.network.core.IndexBasedSplitter.forward` method shall output.
         :rtype: List[int]"""
         return self._output_shape
     
@@ -122,9 +122,9 @@ class IndexBasedSplitter(torch.nn.Module):
         self._output_shape = new_value
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """This method first flattens the input tensor `x` along :py:meth:`~.IndexBasedSplitter.input_flatten_axes`, then extracts the corresponding entries using 
-        the indices from :py:meth:`~.IndexBasedSplitter.output_indices` and then unflattens the output along the axes specified in 
-        :py:meth:`~.IndexBasedSplitter.output_flatten_axes` to arrive at the output shape specified in :py:meth:`~.IndexBasedSplitter.output_shape`."""
+        """This method first flattens the input tensor `x` along :py:meth:`~briann.network.core.IndexBasedSplitter.input_flatten_axes`, then extracts the corresponding entries using 
+        the indices from :py:meth:`~briann.network.core.IndexBasedSplitter.output_indices` and then unflattens the output along the axes specified in 
+        :py:meth:`~briann.network.core.IndexBasedSplitter.output_flatten_axes` to arrive at the output shape specified in :py:meth:`~briann.network.core.IndexBasedSplitter.output_shape`."""
 
         # Flatten x
         x_axis = self.input_flatten_axes[0]

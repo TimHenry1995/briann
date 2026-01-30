@@ -8,7 +8,7 @@ from typing import List, Any
 import sys
 import os
 sys.path.append(os.path.abspath(""))
-from briann.python.utilities import callbacks as bpuc
+from briann.utilities import callbacks as bpuc
 
 class Observer():
 
@@ -103,16 +103,16 @@ if __name__ == "1__main__":
 
     oldtrace = None
     try:
-        import pydevd
-        debugger=pydevd.GetGlobalDebugger()
-        if debugger is not None:
-            oldtrace = [debugger.trace_dispatch]
-
+        #import pydevd
+        #debugger=pydevd.GetGlobalDebugger()
+        #if debugger is not None:
+        #    oldtrace = [debugger.trace_dispatch]
+        pass
     except ImportError:
         pass
 
-    if oldtrace is None:
-        oldtrace = [frame.f_trace]
+    #if oldtrace is None:
+    #    oldtrace = [frame.f_trace]
 
     # Regular example
     a = A(x=3)

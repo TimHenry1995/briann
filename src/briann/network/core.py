@@ -15,15 +15,15 @@ import networkx as nx
 from abc import ABC, abstractmethod
 
 class TimeFrame():
-    """A time-frame in the simulation that holds a temporary state of an :py:class:`.Area`. 
+    """A time-frame in the simulation that holds a temporary state of an :py:class:`~briann.network.core.Area`. 
 
-    :param state: Sets the :py:attr:`~.TimeFrame.state` of this time frame.
+    :param state: Sets the :py:attr:`~briann.network.core.TimeFrame.state` of this time frame.
     :type state: :py:class:`torch.Tensor`
-    :param time_point: Sets the :py:attr:`~.TimeFrame.time_point` of this time frame.
+    :param time_point: Sets the :py:attr:`~briann.network.core.TimeFrame.time_point` of this time frame.
     :type time_point: float
     """
     
-    def __init__(self, state: torch.Tensor, time_point: float) -> "TimeFrame":
+    def __init__(self, state: torch.Tensor, time_point: float) -> None:
         
         # Set properties
         self.state = state
@@ -45,7 +45,7 @@ class TimeFrame():
 
     @property
     def time_point(self) -> float:
-        """:return: The time point at which this time frame's :py:meth:`~.TimeFrame.state` occured.
+        """:return: The time point at which this time frame's :py:meth:`~briann.network.core.TimeFrame.state` occured.
         :rtype: float"""
         return self._time_point
     
@@ -65,19 +65,17 @@ class TimeFrame():
 
 class TimeFrameAccumulator():
     """This class is used to accumulate :py:class:`.TimeFrame` objects. Accumulation happens by adding new time-frames into the accumulator's
-    own time-frame using the :py:meth:`~.TimeFrameAccumulator.accumulate` function. An important feature of the accumulator is that during
+    own time-frame using the :py:meth:`~briann.network.core.TimeFrameAccumulator.accumulate` function. An important feature of the accumulator is that during
     every update, the currently stored information decays according to the provided `decay_rate` and the time since the last update. 
     This is done to ensure that older information has less influence on the current state of the accumulator than new information.
 
-    :param initial_time_frame: Sets the :py:attr:`~.TimeFrameAccumulator.initial_time_frame` and :py:attr:`~.TimeFrameAccumulator.time_frame` of this time frame accumulator.
-    :type initial_time_frame: :py:class:`.TimeFrame`
-    :param decay_rate: Sets the :py:meth:`~.TimeFrameAccumulator.decay_rate` property of self.
+    :param initial_time_frame: Sets the :py:attr:`~briann.network.core.TimeFrameAccumulator.initial_time_frame` and :py:attr:`~briann.network.core.TimeFrameAccumulator.time_frame` of this time frame accumulator.
+    :type initial_time_frame: :py:class:`~briann.network.core.TimeFrame`
+    :param decay_rate: Sets the :py:meth:`~briann.network.core.TimeFrameAccumulator.decay_rate` property of self.
     :type decay_rate: float
-    :return: A new time-frame accumulator.
-    :rtype: :py:class:`.TimeFrameAccumulator`
     """
 
-    def __init__(self, initial_time_frame: TimeFrame, decay_rate: float) -> "TimeFrameAccumulator":
+    def __init__(self, initial_time_frame: TimeFrame, decay_rate: float) -> None:
            
         # Set initial time-frame and time-frame
         if not isinstance(initial_time_frame, TimeFrame):
@@ -90,7 +88,7 @@ class TimeFrameAccumulator():
     
     @property
     def decay_rate(self) -> float:
-        """:return: The rate taken from the interval [0,1] at which the energy of the :py:meth:`~.TimeFrame.state` of :py:meth:`~.TimeFrameAccumulator.time_frame` decays as time passes. This rate is recommended to be in the range (0,1), in order to have true exponential decay. If set to 1, there is no decay, if set to 0, there is no memory. See py:meth:`~.TimeFrameAccumulator.accumulate` for details.
+        """:return: The rate taken from the interval [0,1] at which the energy of the :py:meth:`~briann.network.core.TimeFrame.state` of :py:meth:`~briann.network.core.TimeFrameAccumulator.time_frame` decays as time passes. This rate is recommended to be in the range (0,1), in order to have true exponential decay. If set to 1, there is no decay, if set to 0, there is no memory. See py:meth:`~.TimeFrameAccumulator.accumulate` for details.
         :rtype: float"""
         return self._decay_rate
         
@@ -108,14 +106,14 @@ class TimeFrameAccumulator():
         self._decay_rate = new_value
 
     def accumulate(self, time_frame: TimeFrame) -> None:
-        """Sets the :py:meth:`~.TimeFrame.state` of the :py:meth:`~.TimeFrameAccumulator.time_frame` of self equal to the weighted sum of 
+        """Sets the :py:meth:`~briann.network.core.TimeFrame.state` of the :py:meth:`~briann.network.core.TimeFrameAccumulator.time_frame` of self equal to the weighted sum of 
         the state of the new `time_frame` and the state the current time frame of self. The weight for the old state is 
-        w = :py:meth:`~.TimeFrameAccumulator.decay_rate`^dt, where dt is the time of the provided `time_frame` minus the time-frame currently 
+        w = :py:meth:`~briann.network.core.TimeFrameAccumulator.decay_rate`^dt, where dt is the time of the provided `time_frame` minus the time-frame currently 
         held by self. The weight for the new `time_frame` is simply equal to 1.
-        This method also sets the :py:meth:`~.TimeFrame.time_point` of the time-frame of self equal to that of the new `time_frame`.
+        This method also sets the :py:meth:`~briann.network.core.TimeFrame.time_point` of the time-frame of self equal to that of the new `time_frame`.
 
-        :param time_frame: The new time-frame to be added to the :py:meth:`~.TimeFrameAccumulator.time_frame` of self.
-        :type time_frame: :py:class:`.TimeFrame`
+        :param time_frame: The new time-frame to be added to the :py:meth:`~briann.network.core.TimeFrameAccumulator.time_frame` of self.
+        :type time_frame: :py:class:`~briann.network.core.TimeFrame`
         :raises ValueError: If the state of `time_frame` does not have the same shape as that of the current time-frame of self.
         :raises ValueError: If the time-point of `time_frame` is earlier than that of the current time-frame of self.
         :return: None
@@ -134,13 +132,13 @@ class TimeFrameAccumulator():
         self._time_frame = TimeFrame(state=self._time_frame.state*self.decay_rate**dt + time_frame.state, time_point=time_frame.time_point)
 
     def time_frame(self, current_time: float) -> TimeFrame:
-        """Provides a :py:class:`.TimeFrame` that holds the time-discounted sum of all :py:class:`.TimeFrame` objects added via the :py:meth:`~.TimeFrameAccumulator.accumulate` method.
+        """Provides a :py:class:`~briann.network.core.TimeFrame` that holds the time-discounted sum of all :py:class:`~briann.network.core.TimeFrame` objects added via the :py:meth:`~briann.network.core.TimeFrameAccumulator.accumulate` method.
 
         :param current_time: The current time, used to discount the state of self.
         :type current_time: float
         :raises ValueError: If `current_time` is earlier than the time-point of the current time-frame of self.
         :return: The time-discounted time-frame of this accumulator.
-        :rtype: :py:class:`.TimeFrame`
+        :rtype: :py:class:`~briann.network.core.TimeFrame`
         """
 
         # Ensure data correctness
@@ -157,10 +155,10 @@ class TimeFrameAccumulator():
         return self._time_frame 
 
     def reset(self, initial_time_frame: TimeFrame = None) -> None:
-        """Resets the :py:meth:`~.TimeFrameAccumulator.time_frame` of self. If `initial_time_frame` is provided, then this one will
-        be used for reset and saved in :py:meth:`~.TimeFrameAccumulator.initial_time_frame`. Otherwise, the one provided during construction will be used.
+        """Resets the :py:meth:`~briann.network.core.TimeFrameAccumulator.time_frame` of self. If `initial_time_frame` is provided, then this one will
+        be used for reset and saved in :py:meth:`~briann.network.core.TimeFrameAccumulator.initial_time_frame`. Otherwise, the one provided during construction will be used.
 
-        :param initial_time_frame: The time-frame to be used to set :py:meth:`~.TimeFrameAccumulator.time_frame` and :py:meth:`~.TimeFrameAccumulator.initial_time_frame` of self.
+        :param initial_time_frame: The time-frame to be used to set :py:meth:`~briann.network.core.TimeFrameAccumulator.time_frame` and :py:meth:`~briann.network.core.TimeFrameAccumulator.initial_time_frame` of self.
         :type initial_time_frame: TimeFrame, optional, defaults to None.
         """
 
@@ -179,7 +177,7 @@ class TimeFrameAccumulator():
         return f"TimeFrameAccumulator(decay_rate={self.decay_rate}, state shape={self._time_frame.state.shape}, time_point={self._time_frame.time_point})"
  
 class Merger(bpuco.Adapter):
-    """This class (and in particular its forward method) is to be used inside the :py:meth:`~.Area.collect_inputs` method to merge all the 
+    """This class (and in particular its forward method) is to be used inside the :py:meth:`~briann.network.core.Area.collect_inputs` method to merge all the 
     collected inputs into one :py:class:`torch.Tensor`.  
     """
     
@@ -195,7 +193,7 @@ class Merger(bpuco.Adapter):
 class AdditiveMerger(Merger):
     """This merger adds all inputs."""
 
-    def __init__(self) -> "AdditiveMerger":
+    def __init__(self) -> None:
         super().__init__()
 
     def forward(self, x: Dict[int, torch.Tensor]) -> torch.Tensor:
@@ -221,23 +219,22 @@ class AdditiveMerger(Merger):
         return y
 
 class IndexBasedMerger(Merger):
-    """Maps the dimensions of the input tensors given to the :py:meth:`~.IndexBasedMerger.forward` method to the output tensor.
+    """Maps the dimensions of the input tensors given to the :py:meth:`~briann.network.core.IndexBasedMerger.forward` method to the output tensor.
     
-    :param connection_index_to_input_flatten_axes: Sets the :py:meth:`~.IndexBasedMerger.connection_index_to_input_flatten_axes` property of this instance.
+    :param connection_index_to_input_flatten_axes: Sets the :py:meth:`~briann.network.core.IndexBasedMerger.connection_index_to_input_flatten_axes` property of this instance.
     :type connection_index_to_input_flatten_axes: Dict[int, Tuple[int,int]]
-    :param connection_index_to_output_indices: Sets the :py:meth:`~.IndexBasedMerger.connection_index_to_output_indices` property of this instance.
+    :param connection_index_to_output_indices: Sets the :py:meth:`~briann.network.core.IndexBasedMerger.connection_index_to_output_indices` property of this instance.
     :type connection_index_to_output_indices: Dict[int, Tuple[int,int]]
-    :param output_flatten_axes: Sets the :py:meth:`~.IndexBasedMerger.output_flatten_axes` property of this instance.
+    :param output_flatten_axes: Sets the :py:meth:`~briann.network.core.IndexBasedMerger.output_flatten_axes` property of this instance.
     :type output_flatten_axes: Tuple[int,int]
-    :param final_output_shape: Sets the :py:meth:`~.IndexBasedMerger.final_output_shape` property of this instance.
-    :rtype: :py:class:`IndexBasedMerger`
+    :param final_output_shape: Sets the :py:meth:`~briann.network.core.IndexBasedMerger.final_output_shape` property of this instance.
     """
 
     def __init__(self, 
                  connection_index_to_input_flatten_axes: Dict[int, Tuple[int,int]],
                  connection_index_to_output_indices: Dict[int, List[int]], 
                  output_flatten_axes: Tuple[int,int], 
-                 final_output_shape: List[int]) -> "IndexBasedMerger":
+                 final_output_shape: List[int]) -> None:
         
         # Super
         super().__init__()
@@ -250,7 +247,7 @@ class IndexBasedMerger(Merger):
 
     @property
     def connection_index_to_input_flatten_axes(self) -> Dict[int, Tuple[int,int]]:
-        """:return:A dictionary mapping the :py:meth:`.Connection.index` to a Tuple of two axes, namely the start_axis and end_axis (inclusive). Axes spanned by the start_axis and end_axis are the axes along which the given input tensor will be flattened before its dimensions are mapped onto the output tensor. The calculation of these axes DOES include the initial batch axis and is thus assumed to be greater than 0.
+        """:return:A dictionary mapping the :py:meth:`~briann.network.core.Connection.index` to a Tuple of two axes, namely the start_axis and end_axis (inclusive). Axes spanned by the start_axis and end_axis are the axes along which the given input tensor will be flattened before its dimensions are mapped onto the output tensor. The calculation of these axes DOES include the initial batch axis and is thus assumed to be greater than 0.
         :rtype: Dict[int, Tuple[int,int]]"""
         return self._connection_index_to_input_flatten_axes
     
@@ -272,7 +269,7 @@ class IndexBasedMerger(Merger):
 
     @property
     def connection_index_to_output_indices(self) -> Dict[int, List[int]]:
-        """:return:A dictionary mapping the :py:meth:`.Connection.index` to a list of indices. These latter indices specify where the dimensions of the connection's flattened input :py:class:`torch.Tensor` shall be moved to in the flattened output tensor. Important, the tensor_indices must all be unique and, when joined and sorted, give a contiguous list starting at 0. The length of this list must factor into the :py:meth:`~.IndexBasedMerger.final_output_shape` along the :py:meth:`~.IndexBasedMerger.output_flatten_axes`.
+        """:return:A dictionary mapping the :py:meth:`~briann.network.core.Connection.index` to a list of indices. These latter indices specify where the dimensions of the connection's flattened input :py:class:`torch.Tensor` shall be moved to in the flattened output tensor. Important, the tensor_indices must all be unique and, when joined and sorted, give a contiguous list starting at 0. The length of this list must factor into the :py:meth:`~briann.network.core.IndexBasedMerger.final_output_shape` along the :py:meth:`~briann.network.core.IndexBasedMerger.output_flatten_axes`.
         :rtype: Dict[int, List[int]]"""
         return self._connection_index_to_output_indices
     
@@ -390,11 +387,11 @@ class IndexBasedMerger(Merger):
         return y 
 
 class ConnectionTransformation(torch.nn.Module):
-    """Superclass for a transformation to be placed on a :py:class:`.Connection`. This default implementation only perform the identity transformation on its input.
+    """Superclass for a transformation to be placed on a :py:class:`~briann.network.core.Connection`. This default implementation only perform the identity transformation on its input.
     
-    :param input_shape: Sets the :py:meth:`~ConnectionTransformation.input_shape` property.
+    :param input_shape: Sets the :py:meth:`~briann.network.core.ConnectionTransformation.input_shape` property.
     :type input_shape: List[int]
-    :param output_shape: Sets the :py:meth:`~ConnectionTransformation.output_shape` property.
+    :param output_shape: Sets the :py:meth:`~briann.network.core.ConnectionTransformation.output_shape` property.
     :type output_shape: List[int]
     :return: An instance of this class.
     :rtype: ConnectionTransformation.
@@ -447,19 +444,17 @@ class ConnectionTransformation(torch.nn.Module):
         return x
 
 class LinearConnectionTransformation(ConnectionTransformation):
-    """A simple linear transformation to be placed on a :py:class:`.Connection`. The input is first flattened along all axes except the first (batch axis) and 
+    """A simple linear transformation to be placed on a :py:class:`~briann.network.core.Connection`. The input is first flattened along all axes except the first (batch axis) and 
     then passed through a regular :py:class:`torch.nn.Linear` layer before being reshaped to fit the output shape. Construction of this object allow for keyword arguments
     that further configure the linear transformation taken from torch, i.e. bias, device, dtype.
     
-    :param input_shape: Sets the :py:meth:`~ConnectionTransformation.input_shape` property.
+    :param input_shape: Sets the :py:meth:`~briann.network.core.ConnectionTransformation.input_shape` property.
     :type input_shape: List[int]
-    :param output_shape: Sets the :py:meth:`~ConnectionTransformation.output_shape` property.
+    :param output_shape: Sets the :py:meth:`~briann.network.core.ConnectionTransformation.output_shape` property.
     :type output_shape: List[int]
-    :return: An instance of this class.
-    :rtype: ConnectionTransformation.
     """
 
-    def __init__(self, input_shape: List[int], output_shape: List[int], **kwargs) -> "LinearConnectionTransformation":
+    def __init__(self, input_shape: List[int], output_shape: List[int], **kwargs) -> None:
 
         # Super
         super().__init__(input_shape=input_shape, output_shape=output_shape)
@@ -474,10 +469,10 @@ class LinearConnectionTransformation(ConnectionTransformation):
         bpuc.CallbackManager.add_callback_to_attribute(target_class=LinearConnectionTransformation, target_instance=self, attribute_name='output_shape', callback=LinearConnectionTransformation._on_update_shape)
 
     def _on_update_shape(obj: ConnectionTransformation, name: str, value: List[int]) -> None:
-        """This method is a callback that adjusts the model parameters of the transformation of self whenever the :py:meth:`~ConnectionTransformation.input_shape` or :py:meth:`~ConnectionTransformation.output_shape` is updated.
+        """This method is a callback that adjusts the model parameters of the transformation of self whenever the :py:meth:`~briann.network.core.ConnectionTransformation.input_shape` or :py:meth:`~briann.network.core.ConnectionTransformation.output_shape` is updated.
         
         :param obj: The object on which the input_shape is updated.
-        :type obj: :py:class:`.ConnectionTransformation`
+        :type obj: :py:class:`~briann.network.core.ConnectionTransformation`
         :param name: The name of the attribute (i.e. 'input_shape' or 'output_shape) to be updated.
         :type name: str
         :param value: The new shape of the input or output, disregarding the batch_size as axis 0.
@@ -515,23 +510,21 @@ class LinearConnectionTransformation(ConnectionTransformation):
         return y
 
 class Connection(torch.nn.Module):
-    """A connection between two :py:class:`Area` objects. This is analogous to a neural tract between areas of a biological neural network that 
+    """A connection between two :py:class:`~briann.network.coreArea` objects. This is analogous to a neural tract between areas of a biological neural network that 
     not only sends information but also converts it between the reference frames of the input and output area. It thus has a 
-    :py:meth:`~.Connection.transformation` that is applied to the input before it is sent to the target area. For biological plausibility, 
+    :py:meth:`~briann.network.core.Connection.transformation` that is applied to the input before it is sent to the target area. For biological plausibility, 
     the transformation should be a simple linear transformation, for instance a :py:class:`torch.nn.Linear` layer.
     
-    :param index: Sets the :py:attr:`~.Area.index` of this area.
+    :param index: Sets the :py:attr:`~briann.network.core.Area.index` of this area.
     :type index: int
-    :param from_area_index: Sets the :py:meth:`~Connection.from_area_index` of this connection. 
+    :param from_area_index: Sets the :py:meth:`~briann.network.core.Connection.from_area_index` of this connection. 
     :type from_area_index: int
-    :param to_area_index: Sets the :py:meth:`~Connection.to_area_index` of this connection. 
+    :param to_area_index: Sets the :py:meth:`~briann.network.core.Connection.to_area_index` of this connection. 
     :type to_area_index: int
-    :param input_time_frame_accumulator: Used to set :py:meth:`~.Connection.input_time_frame_accumulator` of self.
-    :type input_time_frame_accumulator: :py:class:`.TimeFrameAccumulator`
-    :param transformation: Sets the :py:meth:`~.Connection.transformation` of the connection.
-    :type transformation: :py:class:`~.ConnectionTransformation`
-    :return: A new connection.
-    :rtype: :py:class:`.Connection`
+    :param input_time_frame_accumulator: Used to set :py:meth:`~briann.network.core.Connection.input_time_frame_accumulator` of self.
+    :type input_time_frame_accumulator: :py:class:`~briann.network.core.TimeFrameAccumulator`
+    :param transformation: Sets the :py:meth:`~briann.network.core.Connection.transformation` of the connection.
+    :type transformation: :py:class:`~briann.network.core.ConnectionTransformation`
     """
 
     def __init__(self, 
@@ -539,7 +532,7 @@ class Connection(torch.nn.Module):
                  from_area_index: int, 
                  to_area_index: int, 
                  input_time_frame_accumulator: TimeFrameAccumulator, 
-                 transformation: ConnectionTransformation) -> "Connection":
+                 transformation: ConnectionTransformation) -> None:
         
         # Call the parent constructor
         super().__init__()
@@ -604,7 +597,7 @@ class Connection(torch.nn.Module):
     @property
     def input_time_frame_accumulator(self) -> TimeFrameAccumulator:
         """:return: The time frame accumulator that stores the input of the connection.
-        :rtype: :py:class:`.TimeFrameAccumulator`
+        :rtype: :py:class:`~briann.network.core.TimeFrameAccumulator`
         """
         return self._input_time_frame_accumulator
 
@@ -619,12 +612,12 @@ class Connection(torch.nn.Module):
         self._input_time_frame_accumulator = new_value
     
     def forward(self, current_time: float) -> TimeFrame:
-        """Reads the current state of the :py:meth:`.Connection.time_frame_accumulator` and applies the :py:meth:`~.Connection.transformation` to it. 
+        """Reads the current state of the :py:meth:`~briann.network.core.Connection.time_frame_accumulator` and applies the :py:meth:`~briann.network.core.Connection.transformation` to it. 
 
         :param current_time: The current time in the simulation.
         :type current_time: float  
         :return: The produced time frame.
-        :rtype: :py:class:`.TimeFrame`
+        :rtype: :py:class:`~briann.network.core.TimeFrame`
         """
 
         # Read input
@@ -646,33 +639,31 @@ class Connection(torch.nn.Module):
         return f"Connection(index={self._index}), from_area_index={self._from_area_index}, to_area_index={self._to_area_index})"
   
 class Area(torch.nn.Module):
-    """An area corresponds to a small population of neurons that jointly hold a representation in the area's :py:meth:`~.Area.output_time_frame_accumulator`.
+    """An area corresponds to a small population of neurons that jointly hold a representation in the area's :py:meth:`~briann.network.core.Area.output_time_frame_accumulator`.
     Given a time-point t and a set S of areas that should be updated at t, the caller should update the areas' states in two consecutive loops over S. The first loop
-    should call the :py:meth:`~.Area.collect_inputs` method on each area to make it collect, sum and buffer its inputs from the overall network. Then, in the second loop, the 
-    :py:meth:`~Area.forward` method should be called on each area of S to sum the buffered inputs and apply the area's :py:meth:`~.Area.transformation`. 
+    should call the :py:meth:`~briann.network.core.Area.collect_inputs` method on each area to make it collect, sum and buffer its inputs from the overall network. Then, in the second loop, the 
+    :py:meth:`~briann.network.core.Area.forward` method should be called on each area of S to sum the buffered inputs and apply the area's :py:meth:`~briann.network.core.Area.transformation`. 
     This splitting of input collection and forward transformation allows for parallelization of areas.
     
-    :param index: Sets the :py:attr:`~.Area.index` of this area.
+    :param index: Sets the :py:attr:`~briann.network.core.Area.index` of this area.
     :type index: int
     :raises ValueError: If the index is not a non-negative integer.
-    :param output_time_frame_accumulator: Sets the :py:meth:`~.Area.output_time_frame_accumulator` of self.
-    :type output_time_frame_accumulator: :py:class:`.TimeFrameAccumulator`
-    :param input_connections: Sets the :py:meth:`~.Area.input_connections` of this area.
-    :type input_connections: List[:py:class:`.Connection`]
-    :param input_shape: Sets the :py:meth:`~.Area.input_shape` of this area.
+    :param output_time_frame_accumulator: Sets the :py:meth:`~briann.network.core.Area.output_time_frame_accumulator` of self.
+    :type output_time_frame_accumulator: :py:class:`~briann.network.core.TimeFrameAccumulator`
+    :param input_connections: Sets the :py:meth:`~briann.network.core.Area.input_connections` of this area.
+    :type input_connections: List[:py:class:`~briann.network.core.Connection`]
+    :param input_shape: Sets the :py:meth:`~briann.network.core.Area.input_shape` of this area.
     :type input_shape: List[int]
-    :param output_shape: Sets the :py:meth:`~.Area.output_shape` of this area.
+    :param output_shape: Sets the :py:meth:`~briann.network.core.Area.output_shape` of this area.
     :type output_shape: List[int]
-    :param output_connections: Sets the :py:meth:`~.Area.output_connections` of this area.
-    :type output_connections: List[:py:class:`.Connection`]
-    :param merger: Sets the :py:meth:`~.Area.merger` property of self.
-    :type merger: :py:class:`.Merger`
-    :param transformation: Sets the :py:meth:`~.Area.transformation` of this area.
+    :param output_connections: Sets the :py:meth:`~briann.network.core.Area.output_connections` of this area.
+    :type output_connections: List[:py:class:`~briann.network.core.Connection`]
+    :param merger: Sets the :py:meth:`~briann.network.core.Area.merger` property of self.
+    :type merger: :py:class:`~briann.network.core.Merger`
+    :param transformation: Sets the :py:meth:`~briann.network.core.Area.transformation` of this area.
     :type transformation: torch.nn.Module
-    :param update_rate: Sets the :py:meth:`~.Area.update_rate` of this area.
+    :param update_rate: Sets the :py:meth:`~briann.network.core.Area.update_rate` of this area.
     :type update_rate: float
-    :return: A new area.
-    :rtype: :py:class:`.Area`
     """
 
     def __init__(self, index: int, 
@@ -683,7 +674,7 @@ class Area(torch.nn.Module):
                  output_connections: List[Connection],
                  merger: Merger,
                  transformation: torch.nn.Module,
-                 update_rate: float) -> "Area":
+                 update_rate: float) -> None:
         
         # Call the parent constructor
         super().__init__()
@@ -746,8 +737,8 @@ class Area(torch.nn.Module):
 
     @property
     def output_time_frame_accumulator(self) -> TimeFrameAccumulator:
-        """:return: The time-frame accumulator of this area. This holds the output state of the area which will be made available to other areas via :py:class:`.Connection`.
-        :rtype: :py:class:`.TimeFrameAccumulator`"""
+        """:return: The time-frame accumulator of this area. This holds the output state of the area which will be made available to other areas via :py:class:`~briann.network.core.Connection`.
+        :rtype: :py:class:`~briann.network.core.TimeFrameAccumulator`"""
         return self._output_time_frame_accumulator
 
     @output_time_frame_accumulator.setter
@@ -767,7 +758,7 @@ class Area(torch.nn.Module):
 
     @property
     def input_connections(self) -> Set[Connection]:
-        """:return: A set of :py:class:`.Connection` objects projecting to this area.
+        """:return: A set of :py:class:`~briann.network.core.Connection` objects projecting to this area.
         :rtype: Set[Connection]
         """
         return self._input_connections
@@ -776,7 +767,7 @@ class Area(torch.nn.Module):
     def input_connections(self, new_value: Set[Connection]) -> None:
         # Check input validity
         if not isinstance(new_value, Set):
-            raise TypeError(f"The input_connections for area {self.index} must be a set of :py:class:`.Connection` objects projecting to area {self.index}.")
+            raise TypeError(f"The input_connections for area {self.index} must be a set of :py:class:`~briann.network.core.Connection` objects projecting to area {self.index}.")
         if not all(isinstance(connection, Connection) for connection in new_value):
             raise TypeError(f"All values in the input_connections set of area {self.index} must be Connection objects projecting to area {self.index}.")
         
@@ -792,14 +783,14 @@ class Area(torch.nn.Module):
 
     @property
     def output_shape(self) -> int:
-        """:return: The shape of the output of this area for a single instance (i.e. excluding the batch-dimension that is assumed to be at index 0 of the actual output). The output is the state held in the :py:meth:`~.Area.output_time_frame_accumulator` and hence has same shape.
+        """:return: The shape of the output of this area for a single instance (i.e. excluding the batch-dimension that is assumed to be at index 0 of the actual output). The output is the state held in the :py:meth:`~briann.network.core.Area.output_time_frame_accumulator` and hence has same shape.
         :rtype: int
         """
         return self._output_shape
 
     @property
     def output_connections(self) -> Set[Connection]:
-        """:return: A set of :py:class:`.Connection` objects projecting from this area. 
+        """:return: A set of :py:class:`~briann.network.core.Connection` objects projecting from this area. 
         :rtype: Set[Connection]
         """
         return self._output_connections
@@ -809,7 +800,7 @@ class Area(torch.nn.Module):
 
         # Check input validity
         if not isinstance(new_value, Set):
-            raise TypeError(f"The output_connections for area {self.index} must be a set of :py:class:`.Connection` objects projecting from area {self.index}.")
+            raise TypeError(f"The output_connections for area {self.index} must be a set of :py:class:`~briann.network.core.Connection` objects projecting from area {self.index}.")
         if not all(isinstance(connection, Connection) for connection in new_value):
             raise TypeError(f"All values in the output_connections set of area {self.index} must be Connection objects projecting from area {self.index}.")
         if 0 < len(new_value):
@@ -827,8 +818,8 @@ class Area(torch.nn.Module):
     
     @property
     def merger(self) -> Merger:
-        """:return: This merger is used to merge the input signals in the :py:meth:`~.Area.collect_inputs` method.
-        :rtype: :py:class:`.Merger`"""
+        """:return: This merger is used to merge the input signals in the :py:meth:`~briann.network.core.Area.collect_inputs` method.
+        :rtype: :py:class:`~briann.network.core.Merger`"""
 
         return self._merger
     
@@ -866,8 +857,8 @@ class Area(torch.nn.Module):
         return self._update_count
     
     def collect_inputs(self, current_time: float) -> None:
-        """Calls the :py:meth:`~.Connection.forward` method of all incoming connections to get the current inputs, sums them up and buffers 
-        the result for later use by the :py:meth:`~.Area.forward` method. Since the inputs are summed, it is necessary that they are all of the same shape. 
+        """Calls the :py:meth:`~briann.network.core.Connection.forward` method of all incoming connections to get the current inputs, sums them up and buffers 
+        the result for later use by the :py:meth:`~briann.network.core.Area.forward` method. Since the inputs are summed, it is necessary that they are all of the same shape. 
         
         :param current_time: The current time of the simulation used to time-discount the states of the input areas.
         :type current_time: float
@@ -884,8 +875,8 @@ class Area(torch.nn.Module):
         self._input_state = self.merger.forward(x=x)
 
     def forward(self) -> None:
-        """Assuming :py:meth:`~.Area.collect_inputs` has been run on all areas of the simulation just beforehand, this method passes the buffered inputs through
-        the `:py:meth:`~.Area.transformation` of self (if exists) and passes the result to the :py:meth:`.TimeFrameAccumulator.accumulate` of self.
+        """Assuming :py:meth:`~briann.network.core.Area.collect_inputs` has been run on all areas of the simulation just beforehand, this method passes the buffered inputs through
+        the `:py:meth:`~briann.network.core.Area.transformation` of self (if exists) and passes the result to the :py:meth:`~briann.network.core.TimeFrameAccumulator.accumulate` of self.
         """
 
         # Determine current time
@@ -931,27 +922,25 @@ class Area(torch.nn.Module):
         return f"Area(index={self._index}, update_rate={self._update_rate}, update_count={self._update_count})"
 
 class Source(Area):
-    """The source :py:class:`.Area` is a special area because it streams the input to the other areas. In order to set it up for the simulation of a trial,
-    load stimuli via the :py:meth:`~.Source.load_stimulus_batch method. Then, during each call to the :py:meth:`.~Area.collect_inputs` method, one :py:class:`.TimeFrame` 
-    will be taken from the stimuli and held in a bffer. Upon calling the :py:meth:`~Area.forward` method, that time-frame will be placed in the
-    :py:meth:`~.Area.TimeFrameAccumulator`, so that it can be read by other areas. Once the time frames are all streamed, the source area will no longer add new
+    """The source :py:class:`~briann.network.core.Area` is a special area because it streams the input to the other areas. In order to set it up for the simulation of a trial,
+    load stimuli via the :py:meth:`~briann.network.core.Source.load_stimulus_batch method. Then, during each call to the :py:meth:`~briann.network.core.Area.collect_inputs` method, one :py:class:`~briann.network.core.TimeFrame` 
+    will be taken from the stimuli and held in a bffer. Upon calling the :py:meth:`~briann.network.core.Area.forward` method, that time-frame will be placed in the
+    :py:meth:`~briann.network.core.Area.TimeFrameAccumulator`, so that it can be read by other areas. Once the time frames are all streamed, the source area will no longer add new
     time-frames to the accumulator and hence its representation will simply decay over time.
 
-    :param index: Sets the :py:attr:`~.Area.index` of this area.
+    :param index: Sets the :py:attr:`~briann.network.core.Area.index` of this area.
     :type index: int
-    :param output_time_frame_accumulator: Sets the :py:meth:`~.Area.time_frame_accumulator` of this area. 
-    :type output_time_frame_accumulator: :py:class:`.TimeFrameAccumulator`
-    :param output_shape: Sets the :py:meth:`~.Area.output_shape` of this area.
+    :param output_time_frame_accumulator: Sets the :py:meth:`~briann.network.core.Area.time_frame_accumulator` of this area. 
+    :type output_time_frame_accumulator: :py:class:`~briann.network.core.TimeFrameAccumulator`
+    :param output_shape: Sets the :py:meth:`~briann.network.core.Area.output_shape` of this area.
     :type output_shape: List[int]
-    :param output_connections: Sets the :py:meth:`~.Area.output_connections` of this area.
-    :type output_connections: Dict[int, :py:class:`.Connection`]
-    :param update_rate: Sets the :py:meth:`~.Area.update_rate` of this area.
+    :param output_connections: Sets the :py:meth:`~.Areabriann.network.core.output_connections` of this area.
+    :type output_connections: Dict[int, :py:class:`~briann.network.core.Connection`]
+    :param update_rate: Sets the :py:meth:`~briann.network.core.Area.update_rate` of this area.
     :type update_rate: float
-    :return: An instance of this class.
-    :rtype: :py:class:`.Source`
     """
 
-    def __init__(self, index: int, output_time_frame_accumulator: TimeFrameAccumulator, output_shape: List[int], output_connections: Dict[int, Connection], update_rate: float) -> "Source":
+    def __init__(self, index: int, output_time_frame_accumulator: TimeFrameAccumulator, output_shape: List[int], output_connections: Dict[int, Connection], update_rate: float) -> None:
 
         # Call the parent constructor
         super().__init__(index=index,
@@ -969,10 +958,10 @@ class Source(Area):
 
     @property
     def stimulus_batch(self) -> Deque[TimeFrame]:
-        """The stimuli that are currently loaded in the source area. This is a deque of :py:class:`.TimeFrame` objects that are to be processed by the model.
+        """The stimuli that are currently loaded in the source area. This is a deque of :py:class:`~briann.network.core.TimeFrame` objects that are to be processed by the model.
         
         :return: The stimuli.
-        :rtype: Deque[:py:class:`.TimeFrame`]
+        :rtype: Deque[:py:class:`~briann.network.core.TimeFrame`]
         """
         return self._stimulus_batch
 
@@ -1003,11 +992,11 @@ class Source(Area):
         self.forward()
 
     def collect_inputs(self, current_time: float) -> None:
-        """Pops the next :py:class:`.TimeFrame` from :py:meth:`~.Source.stimulus_batch` or generates an array of zeros if the stimulus stream is over. Either way, the result is buffered internally to be made available to other areas upon calling :py:meth:`~.Area.forward`.
+        """Pops the next :py:class:`~briann.network.core.TimeFrame` from :py:meth:`~briann.network.core.Source.stimulus_batch` or generates an array of zeros if the stimulus stream is over. Either way, the result is buffered internally to be made available to other areas upon calling :py:meth:`~briann.network.core.Area.forward`.
         
         :param current_time: The current time of the simulation.
         :type current_time: float
-        :raises ValueError: if the `current_time` is not equal to the time of the popped :py:class:`.TimeFrame`.
+        :raises ValueError: if the `current_time` is not equal to the time of the popped :py:class:`~briann.network.core.TimeFrame`.
         :rtype: None
         """
 
@@ -1027,23 +1016,23 @@ class Source(Area):
             self._input_state = torch.zeros_like(current_time_frame.state)
 
 class Target(Area):
-    """This class is a subclass of :py:class:`.Area` and has the same functionality as a regular area except that it has no output connections.
+    """This class is a subclass of :py:class:`~briann.network.core.Area` and has the same functionality as a regular area except that it has no output connections.
 
-    :param index: Sets the :py:attr:`~.Area.index` of this area.
+    :param index: Sets the :py:attr:`~briann.network.core.Area.index` of this area.
     :type index: int
-    :param output_time_frame_accumulator: Sets the :py:meth:`~.Area.output_time_frame_accumulator` of self.
-    :type output_time_frame_accumulator: :py:class:`.TimeFrameAccumulator`
-    :param input_connections: Sets the :py:meth:`~.Area.input_connections` of this area.
-    :type input_connections: List[:py:class:`.Connection`]
-    :param input_shape: Sets the :py:meth:`~.Area.input_shape` of this area.
+    :param output_time_frame_accumulator: Sets the :py:meth:`~briann.network.core.Area.output_time_frame_accumulator` of self.
+    :type output_time_frame_accumulator: :py:class:`~briann.network.core.TimeFrameAccumulator`
+    :param input_connections: Sets the :py:meth:`~briann.network.core.Area.input_connections` of this area.
+    :type input_connections: List[:py:class:`~briann.network.core.Connection`]
+    :param input_shape: Sets the :py:meth:`~briann.network.core.Area.input_shape` of this area.
     :type input_shape: List[int]
-    :param output_shape: Sets the :py:meth:`~.Area.output_shape` of this area.
+    :param output_shape: Sets the :py:meth:`~briann.network.core.Area.output_shape` of this area.
     :type output_shape: List[int]
-    :param merger: Sets the :py:meth:`~.Area.merger` property of self.
-    :type merger: :py:class:`.Merger`
-    :param transformation: Sets the :py:meth:`~.Area.transformation` of this area.
+    :param merger: Sets the :py:meth:`~briann.network.core.Area.merger` property of self.
+    :type merger: :py:class:`~briann.network.core.Merger`
+    :param transformation: Sets the :py:meth:`~briann.network.core.Area.transformation` of this area.
     :type transformation: torch.nn.Module
-    :param update_rate: Sets the :py:meth:`~.Area.update_rate` of this area.
+    :param update_rate: Sets the :py:meth:`~briann.network.core.Area.update_rate` of this area.
     :type update_rate: float
     """
 
@@ -1054,7 +1043,7 @@ class Target(Area):
                  output_shape: List[int],
                  merger: Merger,
                  transformation: torch.nn.Module, 
-                 update_rate: float) -> "Target":
+                 update_rate: float) -> None:
         
         # Cqll to super
         super().__init__(index=index, 
@@ -1077,8 +1066,8 @@ class Target(Area):
             raise ValueError("A Target area does not accept any output connections.")
 
     def forward(self) -> None:
-        """Assuming :py:meth:`~.Area.collect_inputs` has been run on all areas of the simulation just beforehand, this method passes the buffered inputs through
-        the `:py:meth:`~.Area.transformation` of self (if exists) and passes the result to the :py:meth:`.TimeFrameAccumulator.accumulate` of self.
+        """Assuming :py:meth:`~briann.network.core.Area.collect_inputs` has been run on all areas of the simulation just beforehand, this method passes the buffered inputs through
+        the `:py:meth:`~briann.network.core.Area.transformation` of self (if exists) and passes the result to the :py:meth:`~briann.network.core.TimeFrameAccumulator.accumulate` of self.
         """
 
         # Call to super
@@ -1090,7 +1079,7 @@ class Target(Area):
         self._output_states.append(new_time_frame.state)
 
     def extract_current_output_batch(self, final_states_only: bool = True) -> torch.Tensor:
-        """Extracts the current output batch held by this target area. This is done by collecting all time-frames obtained by :py:meth:`~.Target.forward` and held in buffer and stacking them into a tensor
+        """Extracts the current output batch held by this target area. This is done by collecting all time-frames obtained by :py:meth:`~briann.network.core.Target.forward` and held in buffer and stacking them into a tensor
         that is returned. After extraction, the internal buffer of time-frames is cleared.
         
         :param final_states_only: Indicates whether only the final, i.e. current output states shall be returned or the entire sequence.
@@ -1121,34 +1110,19 @@ class Target(Area):
     
 
 class BrIANN(torch.nn.Module):
-    """This class functions as the network that holds together all its :py:class:`.Area`s and :py:class:`.Connection`s. Its name abbreviates Brain Inspired Artificial Neural Networks. 
+    """This class functions as the network that holds together all its :py:class:`~briann.network.core.Area`'s and :py:class:`~briann.network.core.Connection`'s. Its name abbreviates Brain Inspired Artificial Neural Networks. 
     To use it, one should provide a configuration dictionary from which all components can be loaded. 
-    Then, for each batch, one should call :py:meth:`~.BrIANN.load_next_stimulus_batch`.
+    Then, for each batch, one should call :py:meth:`~briann.network.core.BrIANN.load_next_stimulus_batch`.
     Once a batch is loaded, the processing can be simulated for as long as the caller intends (ideally at least for as long as the
-    :py:class:`~.Source` areas provide :py:class:`.TimeFrame`s) using the :py:meth:`~.BrIANN.step` method.
-    In order to get a simplified networkx representation which contains information about the large-scale network topology (:py:class:`.Area`s and :py:class:`.Connection`s),
-    one can use :py:meth:`~.BrIANN.get_topology`.
+    :py:class:`~briann.network.core.Source` areas provide :py:class:`~briann.network.core.TimeFrame`'s) using the :py:meth:`~briann.network.core.BrIANN.step` method.
+    In order to get a simplified networkx representation which contains information about the large-scale network topology (:py:class:`~briann.network.core.Area`'s and :py:class:`~briann.network.core.Connection`'s),
+    one can use :py:meth:`~briann.network.core.BrIANN.get_topology`.
     
     :param configuration: A configuration in the form of a dictionary.
     :type configuration: Dict[str, Any]
     """
-    
-    def __init__(self, configuration: Dict[str,Any]) -> "BrIANN":
-        raise DeprecationWarning("The BrIANN(configuration) constructor is deprecated. Please use BrIANN(name, areas, connections) instead.")
-    
-        # Call the parent constructor
-        super().__init__()
 
-        # Load the model based on the configuration
-        self._load_from_configuration(configuration=configuration)
-
-        # Set the time of the simulation
-        self._current_simulation_time = 0.0
-        """:return: The time that has passed since the start of the simulation. It is updated after each step of the simulation.
-        :rtype: float
-        """
-
-    def __init__(self, name, areas: List[Area], connections: List[Connection]) -> "BrIANN":
+    def __init__(self, name, areas: List[Area], connections: List[Connection]) -> None:
         
         # Call the parent constructor
         super().__init__()
@@ -1178,7 +1152,7 @@ class BrIANN(torch.nn.Module):
     
     def get_area_at_index(self, index: int) -> Area:
         """:return: The area with given `index`.
-        :rtype: :py:class:`.Area`
+        :rtype: :py:class:`~briann.network.core.Area`
         :raises ValueError: If self does not store an area of given `index`
         """
         
@@ -1196,14 +1170,14 @@ class BrIANN(torch.nn.Module):
     
     @property
     def connections(self) -> torch.nn.ModuleList:
-        """:return: The set of internally stored :py:class:`.Connection`.
+        """:return: The set of internally stored :py:class:`~briann.network.core.Connection`.
         :rtype: torch.nn.ModuleList
         """
         return self._connections
     
     def get_connections_from(self, area_index: int) -> Set[Connection]:
-        """:return: A set of :py:class:`.Connection` objects that are the output connections of the area with the given index. 
-        :rtype: Set[:py:class:`.Connection`]
+        """:return: A set of :py:class:`~briann.network.core.Connection` objects that are the output connections of the area with the given index. 
+        :rtype: Set[:py:class:`~briann.network.core.Connection`]
         """
 
         # Compile
@@ -1218,8 +1192,8 @@ class BrIANN(torch.nn.Module):
         return set(result[:i])
         
     def get_connections_to(self, area_index: int) -> Set[Connection]:
-        """:return: A set of :py:class:`.Connection` objects that are the input connections to the area with the given index. 
-        :rtype: Set[:py:class:`.Connection`]
+        """:return: A set of :py:class:`~briann.network.core.Connection` objects that are the input connections to the area with the given index. 
+        :rtype: Set[:py:class:`~briann.network.core.Connection`]
         """
 
         # Compile
@@ -1240,132 +1214,9 @@ class BrIANN(torch.nn.Module):
         """
         return self._current_simulation_time
 
-    def _load_from_configuration(self, configuration: Dict[str, Any]) -> None:
-        """Loads the overall network, including the :py:class:`.Area`s and :py:class:`.Connection`s as well as
-        the torch.data.utils.DataLoaders.
-        
-        :param configuration: A configuration in the form of a dictionary.
-        :type configuration: Dict[str, Any]
-        """
-        
-        # Check if all area indices are integers 
-        area_indices = [item["index"] for item in configuration["areas"]]
-        if not all(isinstance(area_index, int) for area_index in area_indices):
-            raise TypeError("All area indices must be integers.")
-        
-        # Extract network parameters
-        network_configuration = configuration["network"]
-        name = network_configuration["name"]
-        decay_rate = network_configuration["decay_rate"]
-        batch_size = network_configuration["batch_size"]
-
-        # Ensure their validity
-        if not isinstance(name, str):
-            raise TypeError(f"The network's name was expected to be a str, but is {type(name)}")
-        if (not isinstance(decay_rate, int)) and (not isinstance(decay_rate, float)):
-            raise TypeError(f"The network's decay_rate was expected to be a float, but is {type(decay_rate)}")
-        decay_rate = (float)(decay_rate)
-        if not isinstance(batch_size, int):
-            raise TypeError(f"The network's batch_size was expected to be an int, but is {type(batch_size)}")
-        if not batch_size > 0:
-            raise TypeError(f"The network's batch_size was expected to be positive, but is {batch_size}")
-        
-        # Set properties
-        self.name = name
-        self.decay_rate = decay_rate
-        self.batch_size = batch_size
-
-        # Extract initial states from areas to pass to connections
-        time_frame_accumulators = {}
-        for area_configuration in configuration["areas"]:
-            
-            # Extract initial state
-            global initial_state
-            exec("global initial_state; initial_state = " + area_configuration["initial_state"]) # This is a single tensor that is disregarding the batch-size
-            
-            if not isinstance(initial_state, torch.Tensor):
-                raise TypeError(f"Expected initial_state to be a torch.Tensor, but received {type(initial_state)}.")
-            
-            # Create copies for all instances of a batch
-            initial_state = torch.concatenate([initial_state[torch.newaxis, :] for _ in range(batch_size)], dim=0)
-
-            # Create time frame accumulator
-            time_frame = TimeFrame(state=initial_state, time_point=0.0)
-            time_frame_accumulator = TimeFrameAccumulator(initial_time_frame=time_frame, decay_rate=decay_rate) 
-            
-            # Store
-            index = area_configuration["index"]
-            time_frame_accumulators[index] = time_frame_accumulator
-
-        # Set connections
-        self._connections = torch.nn.ModuleList([])
-        for connection_configuration in configuration["connections"]:
-            # Extract configuration
-            index = connection_configuration["index"]
-            from_area_index = connection_configuration["from_area_index"]
-            to_area_index = connection_configuration["to_area_index"]
-            time_frame_accumulator = time_frame_accumulators[from_area_index]
-            
-            global transformation
-            exec("global transformation; transformation = " + connection_configuration["transformation"])
-            connection = Connection(index=index, from_area_index=from_area_index, to_area_index=to_area_index, input_time_frame_accumulator=time_frame_accumulator, transformation=transformation)
-            
-            # Insert the connection to the arrays
-            self._connections.append(connection)
-            
-        # Set areas
-        self._areas = torch.nn.ModuleList([])
-        for area_configuration in configuration["areas"]:
-            
-            # Enrich configuration
-            area_index = area_configuration["index"]
-
-            if area_configuration["type"] != "Source": area_configuration["input_connections"] = self.get_connections_to(area_index=area_index)
-            area_configuration["output_time_frame_accumulator"] = time_frame_accumulators[area_index]
-            if area_configuration["type"] != "Target": area_configuration["output_connections"] = self.get_connections_from(area_index=area_index)
-
-            if "merger" in area_configuration.keys():
-                global merger
-                exec("global merger; merger = " + area_configuration["merger"])
-                area_configuration["merger"] = merger
-
-            if "transformation" in area_configuration.keys():
-                exec("global transformation; transformation = " + area_configuration["transformation"])
-                area_configuration["transformation"] = transformation
-
-            if "dataset_index" in area_configuration.keys():
-                dataset_index = area_configuration["dataset_index"]
-                global dataset_configuration
-                dataset_configuration = configuration["datasets"][dataset_index]
-                dataset_type = dataset_configuration["type"]
-                del dataset_configuration["type"]
-                del dataset_configuration["index"]
-                
-                try:
-                    # Create data_loader
-                    global dataset
-                    exec("global dataset, dataset_configuration; dataset = bptdm." + dataset_type + "(**dataset_configuration)")
-                    area_configuration["data_loader"] = torch.utils.data.DataLoader(dataset=dataset, batch_size=batch_size, drop_last=True)
-                except:
-                    pass
-
-                # Remove other attributes
-                del area_configuration["dataset_index"]
-
-            # Create area
-            area_type = area_configuration["type"]
-            del area_configuration["type"]
-            del area_configuration["initial_state"]
-            global tmp, area
-            tmp = area_configuration
-            exec("global area, tmp; area = " + area_type + "(**tmp)")
-
-            # Store
-            self._areas.append(area)
-           
     def get_topology(self) -> nx.DiGraph:
-        """Converts the BrIANN network to a NetworkX DiGraph where each node is simply the :py:meth:`~.Area.index` of a corresponding :py:class:`.Area`
-        and each edge is simply the triplet (*u*,*v*) where *u* is the :py:meht:`~Connection.from_index`, *v* the :py:meht:`~Connection.to_index` of the corresponding :py:class:`.Connection`.
+        """Converts the BrIANN network to a NetworkX DiGraph where each node is simply the :py:meth:`~briann.network.core.Area.index` of a corresponding :py:class:`~briann.network.core.Area`
+        and each edge is simply the triplet (*u*,*v*) where *u* is the :py:meth:`~briann.network.core.Connection.from_index`, *v* the :py:meth:`~briann.network.core.Connection.to_index` of the corresponding :py:class:`~briann.network.core.Connection`.
         
         :return: A NetworkX DiGraph representing the BrIANN network.
         :rtype: nx.DiGraph
@@ -1390,8 +1241,8 @@ class BrIANN(torch.nn.Module):
         return G
 
     def load_next_stimulus_batch(self, X: torch.Tensor | Dict[int, torch.Tensor]) -> None:
-        """This method resets the :py:meth:`.~BrIANN.current_simulation_time` and all areas. It also makes the :py:class:`.Source` areas
-        load their corresponding next batch of stimuli. It thus assumes that all source areas have a valid :py:meth:`~.Source.data_loader` set
+        """This method resets the :py:meth:`~briann.network.core.BrIANN.current_simulation_time` and all areas. It also makes the :py:class:`~briann.network.core.Source` areas
+        load their corresponding next batch of stimuli. It thus assumes that all source areas have a valid :py:meth:`~briann.network.core.Source.data_loader` set
         and that the data loaders are in sync with each other and non-empty.
 
         :param X: A tensor of shape [batch_size, time_frame_count, ...] or a Dict[int, :py:class:`torch.Tensor`] where the tensor's first axis corresponds to instances in the batch and the second axis to time-frames. If a dictionary is provided, then each key is an index of a source area and the value is the corresponding input tensor.
@@ -1417,14 +1268,14 @@ class BrIANN(torch.nn.Module):
         self._current_simulation_time = 0.0
 
     def step(self) -> Set[Area]:
-        """Performs one step of the simulation by finding the set of areas due to be updated next and calling their :py:meth:`~.Area.collect_inputs` and
-        :py:meth:`~.Area.forward` method to make them process their inputs. 
+        """Performs one step of the simulation by finding the set of areas due to be updated next and calling their :py:meth:`~briann.network.core.Area.collect_inputs` and
+        :py:meth:`~briann.network.core.Area.forward` method to make them process their inputs. 
         This method needs to be called repeatedly to step through the simulation. The simulation does not have an internally checked stopping condition,
         meaning this step method can be called indefinitely, even if the sources already ran out of stimuli. 
         The caller of this method thus needs to determine when to stop the simulation.
 
         :return: The set of areas that were updated within this step.
-        :rtype: Set[:py:class:`~.Area`]
+        :rtype: Set[:py:class:`~briann.network.core.Area`]
         """
         
         # Find the areas that are due next

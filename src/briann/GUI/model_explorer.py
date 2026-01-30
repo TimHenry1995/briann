@@ -27,26 +27,24 @@ DPI = root.winfo_fpixels('1i')  # '1i' means 1 inch
 root.destroy()  # Destroy the hidden window
 
 class Animator(customtkinter.CTk):
-    """This class can be used to animate :py:class:`~src.briann.python.components.BrIANN`s. The animator displays a graph for the different :py:class:`~src.briann.python.components.Area`s and :py:class:`~src.briann.python.components.Connections`s.
+    """This class can be used to animate :py:class:`~briann.network.core.BrIANN`'s. The animator displays a graph for the different :py:class:`~briann.network.core.Area`'s and :py:class:`~briann.network.core.Connections`'s.
     The layout of the graph can be adjusted with mouse-clicks inside the animator. It is also possible to add visualisations for area states by right-clicking the areas. 
     When stepping through the simulation, the animator indicates with a color-code which area is currently processing its inputs and updates to their states are displayed in the corresponding visualizers.
     
     :param briann: The briann instance to be animated.
-    :type briann: :py:class:`~src.briann.python.components.BrIANN`
+    :type briann: :py:class:`~briann.network.core.BrIANN`
     :param data_iterator: An iterator that provides the data (X, y (ignored)) to be streamed to the briann model during the simulation.
     :type data_iterator: Iterator
-    :return: An instance of this class.
-    :rtype: :py:class:`.Animator`
     """
 
     @property
     def briann(self):
         """:return: The briann instance that is being animated.
-        :rtype: :py:class:`~.Animator`"""
+        :rtype: :py:class:`~briann.GUI.model_explorer.Animator`"""
 
         return self._briann
 
-    def __init__(self, briann: bpnc.BrIANN, data_iterator: Iterator) -> "Animator":
+    def __init__(self, briann: bpnc.BrIANN, data_iterator: Iterator) -> None:
         # Call super
         super().__init__()
         
@@ -98,14 +96,12 @@ class ControllerFrame(customtkinter.CTkFrame):
     """A frame that holds the different buttons used to control the animation.
     
     :param briann: The briann instance for which the animation shall be controlled.
-    :type briann: :py:class:`~.src.briann.python.components.BrIANN`
+    :type briann: :py:class:`~briann.network.core.BrIANN`
     :param network_visualizer: The visualizer that displays the current state of `briann`.
-    :type network_visualizer: :py:class:`~.NetworkVisualizer`
-    returns: An instance of this class.
-    :rtype: :py:class:`.ControllerFrame`
+    :type network_visualizer: :py:class:`~briann.GUI.model_explorer.NetworkVisualizer`
     """
 
-    def __init__(self, briann: bpnc.BrIANN, network_visualizer: "NetworkVisualizer", **kwargs) -> "ControllerFrame":
+    def __init__(self, briann: bpnc.BrIANN, network_visualizer: "NetworkVisualizer", **kwargs) -> None:
         
         # Super
         super().__init__(**kwargs)
@@ -123,7 +119,7 @@ class ControllerFrame(customtkinter.CTkFrame):
         customtkinter.CTkButton(self, text="Next Stimulus", command=self.on_next_stimulus_button_click).pack(expand=True, side=tk.LEFT, padx=0, pady=10, anchor=tk.CENTER)
         
     def _on_play_button_click(self) -> None:
-        """Starts a loop that steps through the animation until stopped via :py:meth:`~.ControllerFrame._on_pause_button_click`.
+        """Starts a loop that steps through the animation until stopped via :py:meth:`~briann.gui.model_explorer.ControllerFrame._on_pause_button_click`.
         :rtype: None"""
 
         # Set property
@@ -159,14 +155,14 @@ class ControllerFrame(customtkinter.CTkFrame):
         self._play_button.configure(state='normal')
 
     def on_next_time_frame_button_click(self) -> None:
-        """Loads the next :py:class:`~src.briann.python.components.TimeFrame` into the :py:class:`~src.briann.python.components.BrIANN` model.
+        """Loads the next :py:class:`~briann.network.core.TimeFrame` into the :py:class:`~briann.network.core.BrIANN` model.
         :rtype: None"""
 
         # Step
         self._briann.step() # The area state subscribers will automatically update the UI
         
     def on_next_stimulus_button_click(self) -> None:
-        """Loads the next stimulus into the :py:class:`~src.briann.python.components.BrIANN` model.
+        """Loads the next stimulus into the :py:class:`~briann.network.core.BrIANN` model.
         :rtype: None"""
 
         # Ensure current simulation is paused
@@ -179,11 +175,9 @@ class ControllerFrame(customtkinter.CTkFrame):
 class Canvas(tk.Canvas):
     """This class creates a canvas on which network components will be displayed. The canvas can be dragged around and has a reference grid in the background.
     
-    :return: An instance of this class.
-    :rtype: :py:class:`Canvas`
     """
 
-    def __init__(self, **kwargs) -> "Canvas":
+    def __init__(self, **kwargs) -> None:
         super(Canvas, self).__init__(**kwargs)
         
         # Add reference grid
@@ -324,11 +318,9 @@ class DraggableWidget():
         :type x: float, optional, defaults to 0
         :param y: The y-coordinate of the visualizer's center in Cartesian space (inches).
         :type y: float, optional, defaults to 0
+        """
         
-        :return: The visualizer that was created.
-        :rtype: :py:class:`.Visualizer`"""
-        
-    def __init__(self, canvas: Canvas, widget: tk.Widget, x: float = 0, y: float = 0) -> "DraggableWidget":
+    def __init__(self, canvas: Canvas, widget: tk.Widget, x: float = 0, y: float = 0) -> None:
         
         # Set properties
         self._canvas = canvas
@@ -387,7 +379,7 @@ class DraggableWidget():
         """Adds a subscriber that will be notified once the location of this DraggableWidget changes.
 
         :param subscriber: The subscriber to be added to the subscription list.
-        :type subscriber: :py:class:`.DraggableWidget.LocationSubscriber`
+        :type subscriber: :py:class:`~briann.GUI.model_explorer.DraggableWidget.LocationSubscriber`
         :rtype: None"""
 
         self._location_subscribers.append(subscriber)
@@ -429,39 +421,37 @@ class DraggableWidget():
         self._initial_x, self._initial_y = self._x, self._y
 
     class LocationSubscriber(ABC):
-        """An abstract base class for subscribers that want to receive the location of a :py:class:`.DraggableWidget` every time it is updated. Subscribers must implement the :py:meth:`~.DraggableWidget.LocationSubscriber.on_location_update` method.
+        """An abstract base class for subscribers that want to receive the location of a :py:class:`~briann.GUI.model_explorer.DraggableWidget` every time it is updated. Subscribers must implement the :py:meth:`~briann.GUI.model_explorer.DraggableWidget.LocationSubscriber.on_location_update` method.
         """
 
         @abstractmethod
         def on_location_update(self, draggable_widget: "DraggableWidget") -> None:
-            """This method will be called every time the :py:class:`.DraggableWidget`'s :py:meth:`~.DraggableWidget.x` or :py:meth:`~.DraggableWidget.y` are updated.
+            """This method will be called every time the :py:class:`~briann.GUI.model_explorer.DraggableWidget`'s :py:meth:`~briann.GUI.model_explorer.DraggableWidget.x` or :py:meth:`~briann.GUI.model_explorer.DraggableWidget.y` are updated.
 
             :param draggable_widget: The draggable widget that was updated.
-            :type draggable_widget: :py:class:`~.DraggableWidget`
+            :type draggable_widget: :py:class:`~briann.GUI.model_explorer.DraggableWidget`
             :rtype: None
             """
             pass
 
 class Area(DraggableWidget):
-    """A visual representation of a :py:class:`~.src.briann.python.components.BrIANN` that can be placed onto the :py:class:`.Canvas`.
+    """A visual representation of a :py:class:`~briann.network.core.BrIANN` that can be placed onto the :py:class:`~briann.GUI.model_explorer.Canvas`.
     It is represented by a button that can be moved around. The button changes color to indicate whether the corresponding BrIANN area is currently being updated.
     When right-clicking the button, an option menu unfolds that allows to add a visualizer for the state of the area.
     
     :param bpnc_area: The BrIANN area to be visualized.
-    :type bpnc_area: :py:class:`~.src.briann.python.components.Area`
+    :type bpnc_area: :py:class:`~briann.network.core.Area`
     :param canvas: The canvas on which the area shall be visualized.
-    :type canvas: :py:class:'.Canvas`
+    :type canvas: :py:class:`~briann.GUI.model_explorer.Canvas`
     :param briann: The BrIANN that is being simulated.
-    :type briann: :py:class:`~src.briann.python.components.BrIANN`
+    :type briann: :py:class:`~briann.network.core.BrIANN`
     :param x: The x-coordinate of the visualizer's center in Cartesian space (inches).
     :type x: float, optional, defaults to 0
     :param y: The y-coordinate of the visualizer's center in Cartesian space (inches).
     :type y: float, optional, defaults to 0
-    :return: An instance of this class.
-    :rtype: py:class:`.Area`
     """
 
-    def __init__(self, bpnc_area: bpnc.Area, canvas: Canvas, briann: bpnc.BrIANN, x: float, y: float, size: float) -> "Area":
+    def __init__(self, bpnc_area: bpnc.Area, canvas: Canvas, briann: bpnc.BrIANN, x: float, y: float, size: float) -> None:
        
         # Set properties
         self._bpnc_area = bpnc_area
@@ -504,11 +494,11 @@ class Area(DraggableWidget):
     @property
     def state_visualizers(self) -> List["AreaStateVisualizer"]:
         """:return: The list of state visualizers that are currently attached to this area.
-        :rtype: List[:py:class:`.AreaStateVisualizer`]"""
+        :rtype: List[:py:class:`~briann.GUI.model_explorer.AreaStateVisualizer`]"""
         return self._state_visualizers
 
     def _on_right_click(self, event: tk.Event) -> None:
-        """Displays a pop-up window that allow to choose a :py:class:`.AreaStateVisualizer`.
+        """Displays a pop-up window that allow to choose a :py:class:`~briann.GUI.model_explorer.AreaStateVisualizer`.
         
         :param event: The event that triggered the function call.
         :type event: :py:class:`tkinter.Event`
@@ -538,7 +528,7 @@ class Area(DraggableWidget):
         popup.lift()
              
     def _add_state_visualizer(self, option: str, popup: customtkinter.CTkToplevel) -> None:
-        """Maps the user's selection for the preferred :py:class:`.AreaStateVisualizer` to the actual visualizer to be displayed on screen.
+        """Maps the user's selection for the preferred :py:class:`~briann.GUI.model_explorer.AreaStateVisualizer` to the actual visualizer to be displayed on screen.
         
         :param option: The name of the chosen visualizer. Options are ["Line Chart"].
         :type option: str
@@ -567,23 +557,21 @@ class Area(DraggableWidget):
         self._button.configure(fg_color='orange', text_color='white')
 
 class Connection(DraggableWidget.LocationSubscriber):
-    """A visual representation of a :py:class:`~src.briann.python.components.Connection`. The connection is automatically redraws itself when the area is repositioned.
+    """A visual representation of a :py:class:`~briann.network.core.Connection`. The connection is automatically redraws itself when the area is repositioned.
     
     :param from_area: The area from which the connection starts.
-    :type from_area: :py:class:`.Area`
+    :type from_area: :py:class:`~briann.GUI.model_explorer.Area`
     :param to_area: The area at which the connection ends.
-    :type to_area: :py:class:`.Area`
+    :type to_area: :py:class:`~briann.GUI.model_explorer.Area`
     :canvas: The canvas on which the connection shall be drawn.
-    :type canvas: :py:class:`.Canvas`
+    :type canvas: :py:class:`~briann.GUI.model_explorer.Canvas`
     :param width: The thickness of the line representing this connection on screen.
     :type width: int, optional, default to 2.
     :param bend_by: The extend by which the connection should be bent (in inches) relative to the mid-point between the `from_area` and the `to_area`.
-    :type bend_by: float, optional, defaults to 0.0.
-    :return: An instance of this class.
-    :rtype: :py:class:`.Connection`  
+    :type bend_by: float, optional, defaults to 0.0.  
     """
 
-    def __init__(self, from_area: Area, to_area: Area, canvas: Canvas, width: int = 2, bend_by: float = 0.0) -> "Connection":
+    def __init__(self, from_area: Area, to_area: Area, canvas: Canvas, width: int = 2, bend_by: float = 0.0) -> None:
         
         # Set properties
         self._canvas = canvas
@@ -681,11 +669,9 @@ class NetworkVisualizer():
         :param width: The width of the visualizer in inches.
         :type width: float
         :param height: The height of the visualizer in inches.
-        :type height: float
-        :return: The visualizer that was created.
-        :rtype: :py:class:`.NetworkVisualizer`"""
+        :type height: float"""
 
-    def __init__(self, briann: bpnc.BrIANN, canvas: Canvas, initial_x: float, initial_y: float, width: float, height: float, area_size: float) -> "NetworkVisualizer":
+    def __init__(self, briann: bpnc.BrIANN, canvas: Canvas, initial_x: float, initial_y: float, width: float, height: float, area_size: float) -> None:
         
         # Set properties
         self.canvas = canvas
@@ -731,7 +717,7 @@ class NetworkVisualizer():
         return self._briann
 
 class AreaStateVisualizer(DraggableWidget):
-    """Superclass for a set of classes that create 2D visualizations of a :py:meth:`.TimeFrame.state` on a 1x1 unit square"""
+    """Superclass for a set of classes that create 2D visualizations of a :py:meth:`~briann.network.core.TimeFrame.state` on a 1x1 unit square"""
 
     def __init__(self, area: bpnc.Area, canvas: Canvas, current_simulation_time: float, initial_x: float, initial_y: float, width: float, height: float):
     
@@ -771,13 +757,13 @@ class AreaStateVisualizer(DraggableWidget):
         plt.figure(self.figure.number)
         
 class StateVisualizerLineChart(AreaStateVisualizer):
-    """Plots a series of :py:clas:`~briann.python.network.core.TimeFrame`'s in a line-plot where the x-axis represents time, the y-axis represents deflection and there will be one line per channel.
-    This class assumes that the time-series is streamed to py:meth:`~briann.python.GUI.StateVisualizerLineChart._update_plot_` one time-frame at a time.
+    """Plots a series of :py:class:`~briann.network.core.TimeFrame`'s in a line-plot where the x-axis represents time, the y-axis represents deflection and there will be one line per channel.
+    This class assumes that the time-series is streamed to py:meth:`~briann.GUI.StateVisualizerLineChart._update_plot_` one time-frame at a time.
     Each such time-frame is expected to be of shape (batch-size, channel-count). """
 
     NAME_TAG = "Line Chart"
 
-    def __init__(self, area: bpnc.Area, canvas: Canvas, current_simulation_time: float, initial_x: float, initial_y: float, width: float, height: float) -> "StateVisualizerLineChart":
+    def __init__(self, area: bpnc.Area, canvas: Canvas, current_simulation_time: float, initial_x: float, initial_y: float, width: float, height: float) -> None:
         
         # FIRST Set Attributes (needed for initial plot)
         self.ts = np.empty(shape=[0,0])
@@ -819,14 +805,14 @@ class StateVisualizerLineChart(AreaStateVisualizer):
         plt.draw()
 
 class StateVisualizerHeatMap(AreaStateVisualizer):
-    """Plots a series of :py:clas:`~briann.python.network.core.TimeFrame`'s in an evolving heatmap where the x-axis represents width, the y-axis represents height and the heatmap represents values.
+    """Plots a series of :py:class:`~briann.network.core.TimeFrame`'s in an evolving heatmap where the x-axis represents width, the y-axis represents height and the heatmap represents values.
     It assumes that the input state has a shape of (batch-size, channels, height, width) where channels is 1 or 3 (grayscale or RGB) or any other number of channels which will then be averaged across.
     An alternative accepted shape is (batch-size, height, width) for single-channel data.
     The visualizer always plots only the first instance of the batch (index 0)."""
 
     NAME_TAG = "Heatmap"
 
-    def __init__(self, area: bpnc.Area, canvas: Canvas, current_simulation_time: float, initial_x: np.ndarray, initial_y: float, width: float, height: float) -> "StateVisualizerLineChart":
+    def __init__(self, area: bpnc.Area, canvas: Canvas, current_simulation_time: float, initial_x: np.ndarray, initial_y: float, width: float, height: float) -> None:
         
         super().__init__(area=area, canvas=canvas, current_simulation_time=current_simulation_time, initial_x=initial_x, initial_y=initial_y, width=width, height=height)
         

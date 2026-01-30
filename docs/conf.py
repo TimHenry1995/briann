@@ -1,3 +1,6 @@
+import sys
+print("SPHINX sys.path =", sys.path)
+
 # Configuration file for the Sphinx documentation builder.
 #
 # For the full list of built-in configuration values, see the documentation:
@@ -22,6 +25,7 @@ for x in os.walk('..'):
 for x in os.walk(os.path.join("..","..")):
   sys.path.insert(0, x[0])
 
+sys.path.insert(0, os.path.abspath("../../src"))
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
@@ -29,7 +33,7 @@ for x in os.walk(os.path.join("..","..")):
 project = 'briann'
 copyright = '2026, Tim Dick'
 author = 'Tim Dick'
-release = '0.0.4'
+release = '0.0.5'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -45,4 +49,4 @@ language = 'Python'
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_theme = 'sphinx_rtd_theme'
-html_static_path = ['']
+html_static_path = ['_static']
