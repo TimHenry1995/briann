@@ -73,7 +73,7 @@ class CallbackManager():
         :type target_instance: Any
         :param method_name: The name of the method to inspect.
         :type method_name: str
-        :param callback: The callback to call when the method is called. The callback must have the signature: callback(obj: Any, *args, **kwargs), where obj is the object in which the method is called, and args and kwargs are the positional and key-word arguments of the method, respectively. For arguments that are optional for the method, the default value assigned to the corresponding callback's argument takes priority over that asigned to the method's argument. Any returned values from the callback are ignored.
+        :param callback: The callback to call when the method is called. The callback must have the signature: callback(obj: Any, args, kwargs), where obj is the object in which the method is called, and args and kwargs are the positional and key-word arguments of the method, respectively. For arguments that are optional for the method, the default value assigned to the corresponding callback's argument takes priority over that asigned to the method's argument. Any returned values from the callback are ignored.
         :type callback: callable
         :rtype: None
         """
