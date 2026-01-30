@@ -10,7 +10,7 @@ where = ["src"]
 
 [project]
 name = "briann"
-version = "0.0.2"
+version = "0.0.4"
 authors = [
     { name = "Tim Dick"}
 ]
@@ -19,7 +19,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 classifiers = [
-    "Programming Language :: Python :: 3.11gui]",
+    "Programming Language :: Python :: 3.11",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
