@@ -29,7 +29,7 @@ for x in os.walk(os.path.join("..","..")):
 project = 'briann'
 copyright = '2026, Tim Dick'
 author = 'Tim Dick'
-release = '0.0.1'
+release = '0.0.2'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
