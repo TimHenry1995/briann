@@ -11,6 +11,11 @@ autodoc_default_options = {
     "undoc-members": True,
     "private-members": True
 }
+autodoc_mock_imports = [
+    "torch",
+    "numpy",
+    "networkx",
+]
 
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
