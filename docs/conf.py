@@ -18,6 +18,7 @@ autodoc_mock_imports = [
     "matplotlib",
     "matplotlib.pyplot",
     "customtkinter",
+    "tkinter",
     "CTkMenuBar",
 ]
 
