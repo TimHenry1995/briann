@@ -21,17 +21,7 @@ autodoc_mock_imports = [
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
 import os, sys
-for x in os.walk('.'):
-  sys.path.insert(0, x[0])
 
-for x in os.walk('..'):
-  sys.path.insert(0, x[0])
-
-for x in os.walk(os.path.join("..","..")):
-  sys.path.insert(0, x[0])
-
-import os
-import sys
 
 sys.path.insert(0, os.path.abspath("../src"))
 
