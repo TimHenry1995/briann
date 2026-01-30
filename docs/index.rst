@@ -1,5 +1,5 @@
 .. briann documentation master file, created by
-   sphinx-quickstart on Fri Jan 30 11:21:32 2026.
+   sphinx-quickstart on Fri Jan 30 16:57:36 2026.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
