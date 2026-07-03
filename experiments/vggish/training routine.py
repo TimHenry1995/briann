@@ -23,7 +23,7 @@ print(f"Input data has shape X: {sample_X.shape} and y: {sample_y.shape} with {c
 briann.load_next_stimulus_batch(X=sample_X)
 for i in range(10): briann.step()
 
-y_hat = briann.get_area_at_index(index=5).output_time_frame_accumulator._time_frame.state
+y_hat = briann.get_area_at_index(index=14).output_time_frame_accumulator._time_frame.state
 print(f"After a trial forward pass, the total energy of the output is {torch.sum(y_hat**2)}")
 
 # Train

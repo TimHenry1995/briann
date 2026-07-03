@@ -41,12 +41,19 @@ connection_list.append(bnc.Connection(index=14, from_area_index=13, to_area_inde
     torch.nn.Linear(in_features=128, out_features=256*24*16),
     Reshape(new_shape=[256, 24,16])
 )))
+"""
 connection_list.append(bnc.Connection(index=15, from_area_index=7, to_area_index=1, input_time_frame_accumulator=_time_frame_accumulators[7], transformation=torch.nn.Sequential(
     torch.nn.Flatten(),
     torch.nn.Linear(in_features=256*12*8, out_features=1*96*64),
     Reshape(new_shape=[1, 96, 64])
 )))
 
+connection_list.append(bnc.Connection(index=15, from_area_index=7, to_area_index=3, input_time_frame_accumulator=_time_frame_accumulators[7], transformation=torch.nn.Sequential(
+    torch.nn.Flatten(),
+    torch.nn.Linear(in_features=256*12*8, out_features=64*48*32),
+    Reshape(new_shape=[64,48,32])
+)))
+"""
 _connections = torch.nn.ModuleList(*[connection_list])
 
 def get_connections_from(connections, area_index: int) -> Set[bnc.Connection]:
@@ -77,13 +84,13 @@ def get_connections_to(connections, area_index: int) -> Set[bnc.Connection]:
 
 # Set areas
 _areas = []
-
+update_rate = 1.0/0.96
 ## Source area
 _areas.append(bnc.Source(index=0, 
                              output_time_frame_accumulator=_time_frame_accumulators[0], 
                              output_shape=[1, 96, 64], 
                              output_connections=get_connections_from(connections=_connections, area_index=0), 
-                             update_rate=1.0))
+                             update_rate=update_rate))
 
 # Regular areas
 # First Block
@@ -97,7 +104,7 @@ _areas.append(bnc.Area(index=1,
                         transformation=torch.nn.Sequential(
                             torch.nn.Conv2d(in_channels=1, out_channels=64, kernel_size=3, padding=1),
                             torch.nn.ReLU(inplace=True)),
-                        update_rate=1.0))
+                        update_rate=update_rate))
 
 _areas.append(bnc.Area(index=2,
                         output_time_frame_accumulator=_time_frame_accumulators[2],
@@ -107,7 +114,7 @@ _areas.append(bnc.Area(index=2,
                         output_connections=get_connections_from(connections=_connections, area_index=2),
                         merger=bnc.AdditiveMerger(),
                         transformation=torch.nn.MaxPool2d(kernel_size=2, stride=2),
-                        update_rate=1.0))
+                        update_rate=update_rate))
     
 # Second Block
 _areas.append(bnc.Area(index=3,
@@ -120,7 +127,7 @@ _areas.append(bnc.Area(index=3,
                         transformation=torch.nn.Sequential(
                             torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1),
                             torch.nn.ReLU(inplace=True)),
-                        update_rate=1.0))
+                        update_rate=update_rate))
 
 _areas.append(bnc.Area(index=4,
                         output_time_frame_accumulator=_time_frame_accumulators[4],
@@ -130,7 +137,7 @@ _areas.append(bnc.Area(index=4,
                         output_connections=get_connections_from(connections=_connections, area_index=4),
                         merger=bnc.AdditiveMerger(),
                         transformation=torch.nn.MaxPool2d(kernel_size=2, stride=2),
-                        update_rate=1.0))
+                        update_rate=update_rate))
 
 # Third Block
 _areas.append(bnc.Area(index=5,
@@ -143,7 +150,7 @@ _areas.append(bnc.Area(index=5,
                         transformation=torch.nn.Sequential(
                             torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1),
                             torch.nn.ReLU(inplace=True)),
-                        update_rate=1.0))
+                        update_rate=update_rate))
 
 _areas.append(bnc.Area(index=6,
                         output_time_frame_accumulator=_time_frame_accumulators[6],
@@ -155,7 +162,7 @@ _areas.append(bnc.Area(index=6,
                         transformation=torch.nn.Sequential(
                             torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1),
                             torch.nn.ReLU(inplace=True)),
-                        update_rate=1.0))
+                        update_rate=update_rate))
 
 _areas.append(bnc.Area(index=7,
                         output_time_frame_accumulator=_time_frame_accumulators[7],
@@ -165,7 +172,7 @@ _areas.append(bnc.Area(index=7,
                         output_connections=get_connections_from(connections=_connections, area_index=7),
                         merger=bnc.AdditiveMerger(),
                         transformation=torch.nn.MaxPool2d(kernel_size=2, stride=2),
-                        update_rate=1.0))
+                        update_rate=update_rate))
 
 # Fourth Block
 _areas.append(bnc.Area(index=8,
@@ -178,7 +185,7 @@ _areas.append(bnc.Area(index=8,
                         transformation=torch.nn.Sequential(
                             torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1),
                             torch.nn.ReLU(inplace=True)),
-                        update_rate=1.0))
+                        update_rate=update_rate))
 
 _areas.append(bnc.Area(index=9,
                         output_time_frame_accumulator=_time_frame_accumulators[9],
@@ -190,7 +197,7 @@ _areas.append(bnc.Area(index=9,
                         transformation=torch.nn.Sequential(
                             torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1),
                             torch.nn.ReLU(inplace=True)),
-                        update_rate=1.0))
+                        update_rate=update_rate))
 
 _areas.append(bnc.Area(index=10,
                         output_time_frame_accumulator=_time_frame_accumulators[10],
@@ -200,7 +207,7 @@ _areas.append(bnc.Area(index=10,
                         output_connections=get_connections_from(connections=_connections, area_index=10),
                         merger=bnc.AdditiveMerger(),
                         transformation=torch.nn.MaxPool2d(kernel_size=2, stride=2),
-                        update_rate=1.0))
+                        update_rate=update_rate))
     
 # Reshaping block
 _areas.append(bnc.Area(index=11,
@@ -217,7 +224,7 @@ _areas.append(bnc.Area(index=11,
                             torch.nn.Linear(in_features=12288, out_features=4096),
                             torch.nn.ReLU(inplace=True)
                         ),
-                        update_rate=1.0))
+                        update_rate=update_rate))
 
 _areas.append(bnc.Area(index=12,
                         output_time_frame_accumulator=_time_frame_accumulators[12],
@@ -230,7 +237,7 @@ _areas.append(bnc.Area(index=12,
                             torch.nn.Linear(in_features=4096, out_features=4096),
                             torch.nn.ReLU(inplace=True)
                         ),
-                        update_rate=1.0))
+                        update_rate=update_rate))
 
 _areas.append(bnc.Area(index=13,
                         output_time_frame_accumulator=_time_frame_accumulators[13],
@@ -243,7 +250,7 @@ _areas.append(bnc.Area(index=13,
                             torch.nn.Linear(in_features=4096, out_features=128),
                             torch.nn.ReLU(inplace=True)
                         ),
-                        update_rate=1.0))
+                        update_rate=update_rate))
 
 # Target area
 _areas.append(bnc.Target(index=14, 
@@ -253,7 +260,7 @@ _areas.append(bnc.Target(index=14,
                  output_shape=[128],
                  merger=bnc.AdditiveMerger(),
                  transformation=torch.nn.Identity(), 
-                 update_rate=1.0))
+                 update_rate=update_rate))
 
 # Load weights for all areas
 
@@ -271,7 +278,7 @@ training_configuration = {
     "data_iterator": _data_iterator,
     "input_shape": [1, 96, 64],
     "output_shape": [128],
-    "class_count": 1,
+    "class_count": 128,
     "loss_function": torch.nn.CrossEntropyLoss(),
     "optimizer": torch.optim.SGD(_briann.parameters(), lr=0.01, momentum=0.9),
     "epoch_count": 5,

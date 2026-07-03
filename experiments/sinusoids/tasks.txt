@@ -1,0 +1,17 @@
+1. Replace sinusoid dataset with a torch.Dataset implementation that loads actual waveforms (e.g. spoken mnist from kaggle). These should be sample (or re-sampled) to 16kHz and mono (so not stereo), then, pass this torch.DataSet to the VGGish dataset implementation which converts the waveforms into spectrograms
+2. Try to add a new feedback connection between two areas. Make sure you match the shapes. You might need a transformation (e..g a linear layer and a reshape layer) to match the shapes.
+3. Try to merge the maxpooling areas with the convlution layers before them to simplify the computational graph a bit
+4. Add a new area in the end which maps the embeddigns to a class vector
+5. Currently, all areas have an update rate of 1Hz. But, the spectrograms have a duration of 0.96 seconds, hence, consider to change the update rate of each area to 1/0.96
+
+
+For internship (1. Feb to 15. March) goals:
+- try different feedback topologies
+- retrain VGGish in continuos (i.e. not yet spikign mode)
+- measure the performance improvement
+- try to quantify the representational changes at the layers that integrate forward and feedback info and compare that to purely feedforward (e.g. test whether feedback signals helps forward signal cross thresholds to be propagated further up the hierarchy). Maybe use PCA, t-SNE or UMAP projections to illustrate the representations.
+
+
+For thesis, some ideas:
+- one option is to replace the continuous layers from VGGish with spiking ones (Tim can already look into adjustments to BrIANN to simplify this)
+- another option is to see whether the feedback model (probably the continuos, not the spiking one) aligns better with the human auditory cortex than a purely feedforward one. Use e.g. the representational similarity analysis used in the Giordano 2023 study.

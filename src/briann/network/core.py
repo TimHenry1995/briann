@@ -1106,7 +1106,6 @@ class Target(Area):
         # Output
         return output_batch
     
-
 class BrIANN(torch.nn.Module):
     """This class functions as the network that holds together all its :py:class:`~briann.network.core.Area`'s and :py:class:`~briann.network.core.Connection`'s. Its name abbreviates Brain Inspired Artificial Neural Networks. 
     To use it, one should provide a configuration dictionary from which all components can be loaded. 

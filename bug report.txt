@@ -5,3 +5,19 @@
     dx = self._initial_x + event.x - self._mouse_x
                                      ^^^^^^^^^^^^^
 AttributeError: 'Area' object has no attribute '_mouse_x'
+
+- In GUI, Flip the spectorgram in the heatmap display?
+
+- In GUI, Fix the next stimulus button
+
+- Check how scheduler updates the areas and what if we merge areas?
+
+- Try to integrate SNN Torch so that we can easily swop between spiking and continous mode
+
+- In brian step, sort the areas by index to make forward prop immediate
+
+- In brian step, move the collect inputs and forward methods into a signle loop, this trades paralelizability with efficiency in terms of steps needed to propagate a signal through the network
+
+- IMPROTANT: Fix weight loading
+
+- IMPROTANT: Add gating mechanism to time frame accumulator

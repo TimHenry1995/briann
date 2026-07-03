@@ -122,7 +122,7 @@ class Sinusoids(Dataset):
     
     def __getitem__(self, idx):
         # Choose frequency
-        frequency = idx % self._frequency_count + 1
+        frequency = idx % self._frequency_count
         y = frequency
 
         # Generate sinusoid
