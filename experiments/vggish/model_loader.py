@@ -30,7 +30,7 @@ class Reshape(torch.nn.Module):
 _batch_size = 16
 _time_frame_accumulators = {}
 for i, dimensionality in enumerate([[1, 96, 64], [64, 96, 64], [64, 48, 32], [128, 48, 32], [128, 24, 16], [256, 24, 16], [256, 24, 16], [256, 12, 8], [512, 12, 8], [512, 12, 8], [512, 6, 4], [4096], [4096], [128], [128]]):
-    _time_frame_accumulators[i] = bnc.TimeFrameAccumulator(initial_time_frame=bnc.TimeFrame(state=torch.zeros([_batch_size] + dimensionality), time_point=0.0), decay_rate=1.0) 
+    _time_frame_accumulators[i] = bnc.TimeFrameAccumulator(initial_time_frame=bnc.TimeFrame(state=torch.zeros([_batch_size] + dimensionality), time_point=0.0), sustain=0.0001) 
 
 # Set connections
 connection_list = [None] * 14

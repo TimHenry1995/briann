@@ -5,7 +5,7 @@ from collections import deque
 
 import sys, os
 sys.path.append(os.path.abspath(""))
-
+import numpy as np
 from briann.utilities import callbacks as bpuc
 from briann.utilities import core as bpuco
 
@@ -64,16 +64,16 @@ class TimeFrame():
 class TimeFrameAccumulator():
     """This class is used to accumulate :py:class:`.TimeFrame` objects. Accumulation happens by adding new time-frames into the accumulator's
     own time-frame using the :py:meth:`~briann.network.core.TimeFrameAccumulator.accumulate` function. An important feature of the accumulator is that during
-    every update, the currently stored information decays according to the provided `decay_rate` and the time since the last update. 
-    This is done to ensure that older information has less influence on the current state of the accumulator than new information.
+    every update, the currently stored information is sustained according to the provided `sustain` parameter and the time since the last update. 
+    This is done to ensure that older is not completely overwritten by new information, similar to how neurons in the brain sustain their state over time.
 
     :param initial_time_frame: Sets the :py:attr:`~briann.network.core.TimeFrameAccumulator.initial_time_frame` and :py:attr:`~briann.network.core.TimeFrameAccumulator.time_frame` of this time frame accumulator.
     :type initial_time_frame: :py:class:`~briann.network.core.TimeFrame`
-    :param decay_rate: Sets the :py:meth:`~briann.network.core.TimeFrameAccumulator.decay_rate` property of self.
-    :type decay_rate: float
+    :param sustain: Sets the :py:meth:`~briann.network.core.TimeFrameAccumulator.sustain` property of self.
+    :type sustain: float
     """
 
-    def __init__(self, initial_time_frame: TimeFrame, decay_rate: float) -> None:
+    def __init__(self, initial_time_frame: TimeFrame, sustain: float) -> None:
            
         # Set initial time-frame and time-frame
         if not isinstance(initial_time_frame, TimeFrame):
@@ -81,39 +81,54 @@ class TimeFrameAccumulator():
         self._time_frame = initial_time_frame
         self._initial_time_frame = initial_time_frame
 
-        # Set decay rate
-        self.decay_rate = decay_rate
+        # Set sustain
+        self.sustain = sustain
     
     @property
-    def decay_rate(self) -> float:
-        """:return: The rate taken from the interval [0,1] at which the energy of the :py:meth:`~briann.network.core.TimeFrame.state` of :py:meth:`~briann.network.core.TimeFrameAccumulator.time_frame` decays as time passes. If set to 1, there is full decay, meaning the current state is completely forgotten by the time the next state enters. If set to 0, there is no decay, meaning perfect memory of the current state by the time the next state enters. See py:meth:`~.TimeFrameAccumulator.accumulate` for details.
+    def sustain(self) -> float:
+        """:return: The amount of time in seconds it takes for an impulse to decay to 1/e ≈ 0.368 of its current value. This time constant needs to be positive, i.e 0 < `sustain`. If set close to 0, it means little sustain, i.e. the memory is very brief. The large `sustain` is set, the longer the previous states will be sustained. See py:meth:`~.TimeFrameAccumulator.accumulate` for details.
         :rtype: float"""
-        return self._decay_rate
+        return self._sustain
         
-    @decay_rate.setter
-    def decay_rate(self, new_value: float) -> None:
+    @sustain.setter
+    def sustain(self, new_value: float) -> None:
 
         # Check input validity
         if not isinstance(new_value, float):
-            raise TypeError(f"The decay_rate should be a float but was {type(new_value)}.")
+            raise TypeError(f"The sustain should be a float but was {type(new_value)}.")
         
-        if new_value < 0 or new_value > 1: 
-            raise ValueError(f"The decay_rate should not be outside the interval [0,1] but was set to {new_value}.")
+        if new_value < 0 or new_value == 0: 
+            raise ValueError(f"The sustain has to be a positive float but was set to {new_value}.")
 
         # Set property
-        self._decay_rate = new_value
+        self._sustain = new_value
 
     def accumulate(self, time_frame: TimeFrame) -> None:
-        """Sets the :py:meth:`~briann.network.core.TimeFrame.state` of the :py:meth:`~briann.network.core.TimeFrameAccumulator.time_frame` of self equal to the weighted sum of 
-        the state of the new `time_frame` and the state the current time frame of self. The weight for the old state is 
-        w = 0.5 * (1 - r)^dt, where r = :py:meth:`~briann.network.core.TimeFrameAccumulator.decay_rate` and dt is the time of the provided `time_frame` minus the time-frame currently 
-        held by self. The weight for the new `time_frame` is simply equal to 0.5.
-        This method also sets the :py:meth:`~briann.network.core.TimeFrame.time_point` of the time-frame of self equal to that of the new `time_frame`.
+        """Sets the :py:attr:`~briann.network.core.TimeFrame.state` of the 
+        :py:attr:`~briann.network.core.TimeFrameAccumulator.time_frame` of self equal to the 
+        weighted sum of the state of the new `time_frame` and the current state of self. 
+        
+        The update function is governed by a leaky integrator decay:
 
-        :param time_frame: The new time-frame to be added to the :py:meth:`~briann.network.core.TimeFrameAccumulator.time_frame` of self.
+        .. math::
+
+            w = e^{-\\frac{\\delta t}{\\tau}}
+
+            h_t = w \\cdot h_{t-1} + (1 - w) \\cdot x_t
+
+        where :math:`\\delta t` is the time elapsed between the time-frame currently held 
+        by self and the newly provided `time_frame`, and :math:`\\tau` is the 
+        :py:attr:`~briann.network.core.TimeFrameAccumulator.sustain` of self.
+
+        This method also sets the :py:attr:`~briann.network.core.TimeFrame.time_point` 
+        of the time-frame of self equal to that of the new `time_frame`.
+
+        :param time_frame: The new time-frame to be added to self.
         :type time_frame: :py:class:`~briann.network.core.TimeFrame`
-        :raises ValueError: If the state of `time_frame` does not have the same shape as that of the current time-frame of self.
-        :raises ValueError: If the time-point of `time_frame` is earlier than that of the current time-frame of self.
+        :raises ValueError: If the state of `time_frame` does not have the same shape as 
+                            that of the current time-frame of self.
+        :raises ValueError: If the time-point of `time_frame` is earlier than that of 
+                            the current time-frame of self.
         :return: None
         """
         
@@ -127,9 +142,9 @@ class TimeFrameAccumulator():
         
         # Update time frame
         dt = time_frame.time_point - self._time_frame.time_point
-        w = 0.5 * (1.0-self.decay_rate)**dt
-        self._time_frame = TimeFrame(state= w * self._time_frame.state + 0.5 * time_frame.state, time_point=time_frame.time_point)
-
+        w = np.exp(-dt/self.sustain)
+        self._time_frame = TimeFrame(state= w * self._time_frame.state + (1-w) * time_frame.state, time_point=time_frame.time_point)
+        
     def time_frame(self, current_time: float) -> TimeFrame:
         """Provides a :py:class:`~briann.network.core.TimeFrame` that holds the time-discounted sum of all :py:class:`~briann.network.core.TimeFrame` objects added via the :py:meth:`~briann.network.core.TimeFrameAccumulator.accumulate` method.
 
@@ -149,9 +164,10 @@ class TimeFrameAccumulator():
         
         # Update time frame
         dt = current_time - self._time_frame.time_point
-        self._time_frame = TimeFrame(state=self._time_frame.state*self.decay_rate**dt, time_point=current_time)
+        w = np.exp(-dt/self.sustain)
+        time_frame = TimeFrame(state=w*self._time_frame.state, time_point=current_time)
 
-        return self._time_frame 
+        return time_frame 
 
     def reset(self, initial_time_frame: TimeFrame = None) -> None:
         """Resets the :py:meth:`~briann.network.core.TimeFrameAccumulator.time_frame` of self. If `initial_time_frame` is provided, then this one will
@@ -173,7 +189,7 @@ class TimeFrameAccumulator():
             self._time_frame = self._initial_time_frame
 
     def __repr__(self) -> str:
-        return f"TimeFrameAccumulator(decay_rate={self.decay_rate}, state shape={self._time_frame.state.shape}, time_point={self._time_frame.time_point})"
+        return f"TimeFrameAccumulator(sustain={self.sustain}, state shape={self._time_frame.state.shape}, time_point={self._time_frame.time_point})"
  
 class Merger(bpuco.Adapter):
     """This class (and in particular its forward method) is to be used inside the :py:meth:`~briann.network.core.Area.collect_inputs` method to merge all the 
