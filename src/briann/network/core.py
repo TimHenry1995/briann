@@ -86,7 +86,7 @@ class TimeFrameAccumulator():
     
     @property
     def decay_rate(self) -> float:
-        """:return: The rate taken from the interval [0,1] at which the energy of the :py:meth:`~briann.network.core.TimeFrame.state` of :py:meth:`~briann.network.core.TimeFrameAccumulator.time_frame` decays as time passes. This rate is recommended to be in the range (0,1), in order to have true exponential decay. If set to 1, there is no decay, if set to 0, there is no memory. See py:meth:`~.TimeFrameAccumulator.accumulate` for details.
+        """:return: The rate taken from the interval [0,1] at which the energy of the :py:meth:`~briann.network.core.TimeFrame.state` of :py:meth:`~briann.network.core.TimeFrameAccumulator.time_frame` decays as time passes. If set to 1, there is full decay, meaning the current state is completely forgotten by the time the next state enters. If set to 0, there is no decay, meaning perfect memory of the current state by the time the next state enters. See py:meth:`~.TimeFrameAccumulator.accumulate` for details.
         :rtype: float"""
         return self._decay_rate
         
@@ -106,8 +106,8 @@ class TimeFrameAccumulator():
     def accumulate(self, time_frame: TimeFrame) -> None:
         """Sets the :py:meth:`~briann.network.core.TimeFrame.state` of the :py:meth:`~briann.network.core.TimeFrameAccumulator.time_frame` of self equal to the weighted sum of 
         the state of the new `time_frame` and the state the current time frame of self. The weight for the old state is 
-        w = :py:meth:`~briann.network.core.TimeFrameAccumulator.decay_rate`^dt, where dt is the time of the provided `time_frame` minus the time-frame currently 
-        held by self. The weight for the new `time_frame` is simply equal to 1.
+        w = 0.5 * (1 - r)^dt, where r = :py:meth:`~briann.network.core.TimeFrameAccumulator.decay_rate` and dt is the time of the provided `time_frame` minus the time-frame currently 
+        held by self. The weight for the new `time_frame` is simply equal to 0.5.
         This method also sets the :py:meth:`~briann.network.core.TimeFrame.time_point` of the time-frame of self equal to that of the new `time_frame`.
 
         :param time_frame: The new time-frame to be added to the :py:meth:`~briann.network.core.TimeFrameAccumulator.time_frame` of self.
@@ -127,7 +127,8 @@ class TimeFrameAccumulator():
         
         # Update time frame
         dt = time_frame.time_point - self._time_frame.time_point
-        self._time_frame = TimeFrame(state=self._time_frame.state*self.decay_rate**dt + time_frame.state, time_point=time_frame.time_point)
+        w = 0.5 * (1.0-self.decay_rate)**dt
+        self._time_frame = TimeFrame(state= w * self._time_frame.state + 0.5 * time_frame.state, time_point=time_frame.time_point)
 
     def time_frame(self, current_time: float) -> TimeFrame:
         """Provides a :py:class:`~briann.network.core.TimeFrame` that holds the time-discounted sum of all :py:class:`~briann.network.core.TimeFrame` objects added via the :py:meth:`~briann.network.core.TimeFrameAccumulator.accumulate` method.
