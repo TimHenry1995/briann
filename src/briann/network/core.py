@@ -86,7 +86,7 @@ class TimeFrameAccumulator():
     
     @property
     def sustain(self) -> float:
-        """:return: The amount of time in seconds it takes for an impulse to decay to 1/e ≈ 0.368 of its current value. This time constant needs to be positive, i.e 0 < `sustain`. If set close to 0, it means little sustain, i.e. the memory is very brief. The large `sustain` is set, the longer the previous states will be sustained. See py:meth:`~.TimeFrameAccumulator.accumulate` for details.
+        """:return: The amount of time in seconds it takes for an impulse to decay to 1/e ≈ 0.368 of its current value. This time constant needs to be positive, i.e 0 < `sustain`. If set close to 0, it means little sustain, i.e. the memory is very brief. The larger `sustain` is set, the longer the previous states will be remembered. See py:meth:`~.TimeFrameAccumulator.accumulate` for details.
         :rtype: float"""
         return self._sustain
         
