@@ -118,7 +118,9 @@ class TimeFrameAccumulator():
 
         where :math:`\\delta t` is the time elapsed between the time-frame currently held 
         by self and the newly provided `time_frame`, and :math:`\\tau` is the 
-        :py:attr:`~briann.network.core.TimeFrameAccumulator.sustain` of self.
+        :py:attr:`~briann.network.core.TimeFrameAccumulator.sustain` of self. Note that 
+        :math:`\\delta t` is assumed to be positive. To accumulate concurrent events, use
+        a :py:class:`~briann.network.core.Merger` first.
 
         This method also sets the :py:attr:`~briann.network.core.TimeFrame.time_point` 
         of the time-frame of self equal to that of the new `time_frame`.
@@ -142,6 +144,16 @@ class TimeFrameAccumulator():
         
         # Update time frame
         dt = time_frame.time_point - self._time_frame.time_point
+        if dt == 0:
+            raise ValueError("The new time_frame must not occur at the same time as the current time-frame of self. If you have multiple concurrent inputs to a TimeFrameAccumulator, use a Merger object to combine them before accumulating them in a single time-frame.")
+
+        else:
+            w = np.exp(-dt / self.sustain)
+            self._time_frame = TimeFrame(
+                state=w * self._time_frame.state + (1 - w) * time_frame.state, 
+                time_point=time_frame.time_point
+            )
+        
         w = np.exp(-dt/self.sustain)
         self._time_frame = TimeFrame(state= w * self._time_frame.state + (1-w) * time_frame.state, time_point=time_frame.time_point)
         
