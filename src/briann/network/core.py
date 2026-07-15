@@ -86,7 +86,7 @@ class TimeFrameAccumulator():
     
     @property
     def sustain(self) -> float:
-        """:return: The amount of time in seconds it takes for an impulse to decay to 1/e ≈ 0.368 of its current value. This time constant needs to be positive, i.e 0 < `sustain`. If set close to 0, it means little sustain, i.e. the memory is very brief. The larger `sustain` is set, the longer the previous states will be remembered. See py:meth:`~.TimeFrameAccumulator.accumulate` for details.
+        """:return: The amount of time in seconds it takes for an impulse to decay to 1/e ≈ 0.368 of its current value. Mathematically, this time constant needs to be positive, i.e. 0 < `sustain`, but `sustain` = 0 is also possible here, since the right-sided limit for `sustain` -> 0 of the decay function is defined. The closer `sustain` is set to 0, the shorter the memory effect. The larger `sustain` is set, the longer the previous states will be remembered. See py:meth:`~.TimeFrameAccumulator.accumulate` for details.
         :rtype: float"""
         return self._sustain
         
@@ -98,7 +98,7 @@ class TimeFrameAccumulator():
             raise TypeError(f"The sustain should be a float but was {type(new_value)}.")
         
         if new_value < 0 or new_value == 0: 
-            raise ValueError(f"The sustain has to be a positive float but was set to {new_value}.")
+            raise ValueError(f"The sustain has to be a non-negative float but was set to {new_value}.")
 
         # Set property
         self._sustain = new_value
@@ -142,7 +142,12 @@ class TimeFrameAccumulator():
         if time_frame.time_point < self._time_frame.time_point:
             raise ValueError("The new time_frame must not occur earlier in time than the current time-frame of self.")
         
-        # Update time frame
+        # Handle the limit case of sustain = 0, which is equivalent to the right-sided limit of the decay function for sustain -> 0. In this case, the new time_frame state is simply set to the state of self.
+        if self._sustain == 0:
+            self._time_frame = TimeFrame(state=time_frame.state, time_point=time_frame.time_point)
+            return
+
+        # Otherwise, update time frame using weighted sum of current and previous state
         dt = time_frame.time_point - self._time_frame.time_point
         if dt == 0:
             raise ValueError("The new time_frame must not occur at the same time as the current time-frame of self. If you have multiple concurrent inputs to a TimeFrameAccumulator, use a Merger object to combine them before accumulating them in a single time-frame.")
