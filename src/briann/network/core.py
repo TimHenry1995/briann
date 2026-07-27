@@ -67,7 +67,7 @@ class TimeFrameAccumulator():
     every update, the currently stored information is sustained according to the provided `sustain` parameter and the time since the last update. 
     This is done to ensure that older is not completely overwritten by new information, similar to how neurons in the brain sustain their state over time.
 
-    :param initial_time_frame: Sets the :py:attr:`~briann.network.core.TimeFrameAccumulator.initial_time_frame` and :py:attr:`~briann.network.core.TimeFrameAccumulator.time_frame` of this time frame accumulator.
+    :param initial_time_frame: Sets the :py:attr:`~briann.network.core.TimeFrameAccumulator.initial_time_frame` and :py:attr:`~briann.network.core.TimeFrameAccumulator.time_frame` of this time frame accumulator. It is recommended to set the time-point of this initial time-frame to the negative inverse of the update-rate of the area that will use this accumulator, so that the first actual time-frame (located at time-point 0.0) will have a time difference with the initial time-frame equal to that inverse update-rate. This will lead the sustain to be applied correctly to the first actual time-frame. If the time-point of the initial time-frame is set to negative infinity, then the first actual time-frame will be treated as if it was the first time-frame in the simulation and will not be sustained at all.
     :type initial_time_frame: :py:class:`~briann.network.core.TimeFrame`
     :param sustain: Sets the :py:meth:`~briann.network.core.TimeFrameAccumulator.sustain` property of self.
     :type sustain: float
