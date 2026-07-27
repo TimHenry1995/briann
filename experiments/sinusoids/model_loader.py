@@ -9,10 +9,11 @@ from experiments.sinusoids import data_loader as esdl
 from typing import Set
 
 # Timeframe accumulators
+source_update_rate = 10.0 # Hz
 _batch_size = 16
 _time_frame_accumulators = {}
 for _i, _dimensionality in enumerate([1,7,4,2,1,3]):
-    _time_frame_accumulators[_i] = bnc.TimeFrameAccumulator(initial_time_frame=bnc.TimeFrame(state=torch.zeros([_batch_size,_dimensionality]), time_point=-float('inf')), sustain=0.01) 
+    _time_frame_accumulators[_i] = bnc.TimeFrameAccumulator(initial_time_frame=bnc.TimeFrame(state=torch.zeros([_batch_size,_dimensionality]), time_point=-1.0/source_update_rate), sustain=0.01) 
 
 # Set connections
 _connections = torch.nn.ModuleList([
@@ -62,7 +63,7 @@ _areas.append(bnc.Source(index=0,
                              output_time_frame_accumulator=_time_frame_accumulators[0], 
                              output_shape=[1], 
                              output_connections=get_connections_from(connections=_connections, area_index=0), 
-                             update_rate=10))
+                             update_rate=source_update_rate))
 
 # Regular areas
 _areas.append(bnc.Area(index=1,

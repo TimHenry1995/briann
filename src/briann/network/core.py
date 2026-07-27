@@ -150,7 +150,7 @@ class TimeFrameAccumulator():
         # Otherwise, update time frame using weighted sum of current and previous state
         dt = time_frame.time_point - self._time_frame.time_point
         if dt == 0:
-            raise ValueError("The new time_frame must not occur at the same time as the current time-frame of self. If you have multiple concurrent inputs to a TimeFrameAccumulator, use a Merger object to combine them before accumulating them in a single time-frame.")
+            raise ValueError("The new time_frame must not occur at the same time as the current time-frame of self. If you observe this error at the first time-frame of the simulation, ensure you initalized this TimeFrameAccumulator with a time-frame whose time-point is set to the negative inverse sampling-rate of the area, leading the time difference with the first actual time-frame (located at time-point 0.0) to be equal to that inverse sampling-rate. If this error occurs because you have multiple concurrent inputs to a TimeFrameAccumulator, use a Merger object to combine them before accumulating them in a single time-frame.")
 
         else:
             w = np.exp(-dt / self.sustain)
