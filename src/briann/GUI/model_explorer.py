@@ -46,11 +46,6 @@ class Animator(customtkinter.CTk):
         # Call super
         super().__init__()
         
-        # Start simulation
-        self._data_iterator = data_iterator
-        X, y = next(data_iterator)
-        briann.load_next_stimulus_batch(X=X)
-
         # Configure window
         self.title("BrIANN Animator")
         self.geometry(f"{(int)(18*DPI)}x{(int)(10*DPI)}")
@@ -71,8 +66,11 @@ class Animator(customtkinter.CTk):
         bpuc.CallbackManager.add_callback_to_attribute(target_class=type(briann), target_instance=briann, attribute_name='_current_simulation_time', callback=self.on_current_simulation_time_update)
         
         # Controller
-        controller_frame = ControllerFrame(briann=briann, network_visualizer=network_visualizer, master=self, corner_radius=0)
+        controller_frame = ControllerFrame(briann=briann, network_visualizer=network_visualizer, data_iterator=data_iterator, master=self, corner_radius=0)
         controller_frame.pack(fill='x', expand=False, side=tk.BOTTOM)
+
+        # Start simulation
+        controller_frame.on_next_stimulus_button_click() # Load first stimulus                
         
         # Quit handler
         self.protocol(name='WM_DELETE_WINDOW', func=self._on_window_close) 
@@ -99,7 +97,7 @@ class ControllerFrame(customtkinter.CTkFrame):
     :type network_visualizer: :py:class:`~briann.GUI.model_explorer.NetworkVisualizer`
     """
 
-    def __init__(self, briann: bnc.BrIANN, network_visualizer: "NetworkVisualizer", **kwargs) -> None:
+    def __init__(self, briann: bnc.BrIANN, network_visualizer: "NetworkVisualizer", data_iterator: Iterator, **kwargs) -> None:
         
         # Super
         super().__init__(**kwargs)
@@ -107,6 +105,7 @@ class ControllerFrame(customtkinter.CTkFrame):
         # Set properties
         self._briann = briann
         self._network_visualizer = network_visualizer
+        self._data_iterator = data_iterator
         self._is_playing = False
 
         # Create buttons

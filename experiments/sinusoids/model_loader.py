@@ -12,7 +12,7 @@ from typing import Set
 _batch_size = 16
 _time_frame_accumulators = {}
 for _i, _dimensionality in enumerate([1,7,4,2,1,3]):
-    _time_frame_accumulators[_i] = bnc.TimeFrameAccumulator(initial_time_frame=bnc.TimeFrame(state=torch.zeros([_batch_size,_dimensionality]), time_point=0.0), sustain=0.1) 
+    _time_frame_accumulators[_i] = bnc.TimeFrameAccumulator(initial_time_frame=bnc.TimeFrame(state=torch.zeros([_batch_size,_dimensionality]), time_point=-float('inf')), sustain=0.01) 
 
 # Set connections
 _connections = torch.nn.ModuleList([
