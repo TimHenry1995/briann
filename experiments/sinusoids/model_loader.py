@@ -3,17 +3,24 @@ sys.path.append(os.path.abspath(""))
 from briann.network import area_transformations as bnat
 from briann.network import connection_transformations as bnct
 from briann.network import core as bnc
-
 from experiments.sinusoids import data_loader as esdl
-
 from typing import Set
 
+# Random seed
+torch.manual_seed(0)
+import numpy as np
+np.random.seed(0)
+import random
+random.seed(0)
+
+
 # Timeframe accumulators
-source_update_rate = 10.0 # Hz
 _batch_size = 16
 _time_frame_accumulators = {}
-for _i, _dimensionality in enumerate([1,7,4,2,1,3]):
-    _time_frame_accumulators[_i] = bnc.TimeFrameAccumulator(initial_time_frame=bnc.TimeFrame(state=torch.zeros([_batch_size,_dimensionality]), time_point=-1.0/source_update_rate), sustain=0.01) 
+_time_frame_accumulators[0] = bnc.TimeFrameAccumulator(initial_time_frame=bnc.TimeFrame(state=torch.zeros([_batch_size,1]), time_point=0.0), sustain=1.0) 
+
+for _i, _dimensionality in enumerate([7,4,2,1,3]):
+    _time_frame_accumulators[1 + _i] = bnc.TimeFrameAccumulator(initial_time_frame=bnc.TimeFrame(state=torch.zeros([_batch_size,_dimensionality]), time_point=0.0), sustain=1.0) 
 
 # Set connections
 _connections = torch.nn.ModuleList([
@@ -63,7 +70,7 @@ _areas.append(bnc.Source(index=0,
                              output_time_frame_accumulator=_time_frame_accumulators[0], 
                              output_shape=[1], 
                              output_connections=get_connections_from(connections=_connections, area_index=0), 
-                             update_rate=source_update_rate))
+                             update_rate=10.0))
 
 # Regular areas
 _areas.append(bnc.Area(index=1,
@@ -121,7 +128,7 @@ _areas.append(bnc.Target(index=5,
 _briann = bnc.BrIANN(name="Briann 2", areas=_areas, connections=_connections)
 
 # Data loader
-_data_iterator = iter(torch.utils.data.DataLoader(dataset=esdl.Sinusoids(instance_count=100, duration=10.0, sampling_rate=10, frequency_count=3, noise_range=0.0), 
+_data_iterator = iter(torch.utils.data.DataLoader(dataset=esdl.Sinusoids(instance_count=100, duration=10.0, sampling_rate=10, frequency_count=3, noise_range=0.5), 
                                                   batch_size=_batch_size, 
                                                   drop_last=True))
 

@@ -97,7 +97,7 @@ class TimeFrameAccumulator():
         if not isinstance(new_value, float):
             raise TypeError(f"The sustain should be a float but was {type(new_value)}.")
         
-        if new_value < 0 or new_value == 0: 
+        if new_value < 0: 
             raise ValueError(f"The sustain has to be a non-negative float but was set to {new_value}.")
 
         # Set property
@@ -143,24 +143,14 @@ class TimeFrameAccumulator():
             raise ValueError("The new time_frame must not occur earlier in time than the current time-frame of self.")
         
         # Handle the limit case of sustain = 0, which is equivalent to the right-sided limit of the decay function for sustain -> 0. In this case, the new time_frame state is simply set to the state of self.
-        if self._sustain == 0:
+        if self._sustain == 0.0:
             self._time_frame = TimeFrame(state=time_frame.state, time_point=time_frame.time_point)
             return
 
         # Otherwise, update time frame using weighted sum of current and previous state
         dt = time_frame.time_point - self._time_frame.time_point
-        if dt == 0:
-            raise ValueError("The new time_frame must not occur at the same time as the current time-frame of self. If you observe this error at the first time-frame of the simulation, ensure you initalized this TimeFrameAccumulator with a time-frame whose time-point is set to the negative inverse sampling-rate of the area, leading the time difference with the first actual time-frame (located at time-point 0.0) to be equal to that inverse sampling-rate. If this error occurs because you have multiple concurrent inputs to a TimeFrameAccumulator, use a Merger object to combine them before accumulating them in a single time-frame.")
-
-        else:
-            w = np.exp(-dt / self.sustain)
-            self._time_frame = TimeFrame(
-                state=w * self._time_frame.state + (1 - w) * time_frame.state, 
-                time_point=time_frame.time_point
-            )
-        
-        w = np.exp(-dt/self.sustain)
-        self._time_frame = TimeFrame(state= w * self._time_frame.state + (1-w) * time_frame.state, time_point=time_frame.time_point)
+        w = np.exp(-dt / self.sustain)
+        self._time_frame = TimeFrame(state=w * self._time_frame.state + (1 - w) * time_frame.state, time_point=time_frame.time_point)
         
     def time_frame(self, current_time: float) -> TimeFrame:
         """Provides a :py:class:`~briann.network.core.TimeFrame` that holds the time-discounted sum of all :py:class:`~briann.network.core.TimeFrame` objects added via the :py:meth:`~briann.network.core.TimeFrameAccumulator.accumulate` method.
@@ -179,8 +169,17 @@ class TimeFrameAccumulator():
         if self._time_frame.time_point > current_time:
             raise ValueError(f"When reading a TimeFrame, the provided current_time ({current_time}) must be later than that of the time-frame held by self ({self._time_frame.value.time_point}).")
         
-        # Update time frame
+        # Update time frame   
+        self.accumulate(TimeFrame(state=torch.zeros_like(self._time_frame.state), time_point=current_time))
+        return TimeFrame(state=self._time_frame.state, time_point=current_time)
+        
         dt = current_time - self._time_frame.time_point
+        if dt == 0.0:
+            return TimeFrame(state=self._time_frame.state, time_point=current_time)
+
+        if self._sustain == 0.0:
+            return TimeFrame(state=0.0*self._time_frame.state, time_point=current_time)
+        
         w = np.exp(-dt/self.sustain)
         time_frame = TimeFrame(state=w*self._time_frame.state, time_point=current_time)
 
@@ -955,7 +954,7 @@ class Area(torch.nn.Module):
 
 class Source(Area):
     """The source :py:class:`~briann.network.core.Area` is a special area because it streams the input to the other areas. In order to set it up for the simulation of a trial,
-    load stimuli via the :py:meth:`~briann.network.core.Source.load_stimulus_batch method. Then, during each call to the :py:meth:`~briann.network.core.Area.collect_inputs` method, one :py:class:`~briann.network.core.TimeFrame` 
+    load stimuli via the :py:meth:`~briann.network.core.Source.load_next_stimulus_batch method. Then, during each call to the :py:meth:`~briann.network.core.Area.collect_inputs` method, one :py:class:`~briann.network.core.TimeFrame` 
     will be taken from the stimuli and held in a bffer. Upon calling the :py:meth:`~briann.network.core.Area.forward` method, that time-frame will be placed in the
     :py:meth:`~briann.network.core.Area.TimeFrameAccumulator`, so that it can be read by other areas. Once the time frames are all streamed, the source area will no longer add new
     time-frames to the accumulator and hence its representation will simply decay over time.
