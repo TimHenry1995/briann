@@ -2,6 +2,7 @@
 import torch
 from typing import List, Dict, Deque, Set, Any, Tuple
 from collections import deque
+import math
 
 import sys, os
 sys.path.append(os.path.abspath(""))
@@ -104,87 +105,43 @@ class TimeFrameAccumulator():
         self._sustain = new_value
 
     def accumulate(self, time_frame: TimeFrame) -> None:
-        """Sets the :py:attr:`~briann.network.core.TimeFrame.state` of the 
-        :py:attr:`~briann.network.core.TimeFrameAccumulator.time_frame` of self equal to the 
-        weighted sum of the state of the new `time_frame` and the current state of self. 
-        
-        The update function is governed by a leaky integrator decay:
-
-        .. math::
-
-            w = e^{-\\frac{\\delta t}{\\tau}}
-
-            h_t = w \\cdot h_{t-1} + (1 - w) \\cdot x_t
-
-        where :math:`\\delta t` is the time elapsed between the time-frame currently held 
-        by self and the newly provided `time_frame`, and :math:`\\tau` is the 
-        :py:attr:`~briann.network.core.TimeFrameAccumulator.sustain` of self. Note that 
-        :math:`\\delta t` is assumed to be positive. To accumulate concurrent events, use
-        a :py:class:`~briann.network.core.Merger` first.
-
-        This method also sets the :py:attr:`~briann.network.core.TimeFrame.time_point` 
-        of the time-frame of self equal to that of the new `time_frame`.
-
-        :param time_frame: The new time-frame to be added to self.
-        :type time_frame: :py:class:`~briann.network.core.TimeFrame`
-        :raises ValueError: If the state of `time_frame` does not have the same shape as 
-                            that of the current time-frame of self.
-        :raises ValueError: If the time-point of `time_frame` is earlier than that of 
-                            the current time-frame of self.
-        :return: None
-        """
-        
         # Ensure input validity
         if not isinstance(time_frame, TimeFrame):
             raise TypeError(f"The time_frame must be a TimeFrame but was {type(time_frame)}.")
-        if not time_frame.state.shape == self._time_frame.state.shape:
+        if time_frame.state.shape != self._time_frame.state.shape:
             raise ValueError(f"The state of the new time_frame must have the same shape as that of self. Expected {self._time_frame.state.shape} but got {time_frame.state.shape}.")
         if time_frame.time_point < self._time_frame.time_point:
             raise ValueError("The new time_frame must not occur earlier in time than the current time-frame of self.")
         
-        # Handle the limit case of sustain = 0, which is equivalent to the right-sided limit of the decay function for sustain -> 0. In this case, the new time_frame state is simply set to the state of self.
+        # Handle the limit case of sustain = 0
         if self._sustain == 0.0:
-            self._time_frame = TimeFrame(state=time_frame.state, time_point=time_frame.time_point)
+            self._time_frame = TimeFrame(state=time_frame.state.clone(), time_point=time_frame.time_point)
             return
 
-        # Otherwise, update time frame using weighted sum of current and previous state
+        # Decay previous state and add incoming impulse state directly
         dt = time_frame.time_point - self._time_frame.time_point
-        w = np.exp(-dt / self.sustain)
-        self._time_frame = TimeFrame(state=w * self._time_frame.state + (1 - w) * time_frame.state, time_point=time_frame.time_point)
-        
+        w = 1.0 if dt == 0.0 else math.exp(-dt / self.sustain)
+
+        self._time_frame = TimeFrame(state=w * self._time_frame.state + time_frame.state, time_point=time_frame.time_point)
+
     def time_frame(self, current_time: float) -> TimeFrame:
-        """Provides a :py:class:`~briann.network.core.TimeFrame` that holds the time-discounted sum of all :py:class:`~briann.network.core.TimeFrame` objects added via the :py:meth:`~briann.network.core.TimeFrameAccumulator.accumulate` method.
-
-        :param current_time: The current time, used to discount the state of self.
-        :type current_time: float
-        :raises ValueError: If `current_time` is earlier than the time-point of the current time-frame of self.
-        :return: The time-discounted time-frame of this accumulator.
-        :rtype: :py:class:`~briann.network.core.TimeFrame`
-        """
-
         # Ensure data correctness
-        if isinstance(current_time, int): current_time = (float)(current_time)
+        if isinstance(current_time, int): 
+            current_time = float(current_time)
         if not isinstance(current_time, float):
             raise TypeError(f"The current_time must be a float but was {type(current_time)}.")
         if self._time_frame.time_point > current_time:
-            raise ValueError(f"When reading a TimeFrame, the provided current_time ({current_time}) must be later than that of the time-frame held by self ({self._time_frame.value.time_point}).")
+            raise ValueError(f"When reading a TimeFrame, the provided current_time ({current_time}) must be later than that of the time-frame held by self ({self._time_frame.time_point}).")
         
-        # Update time frame   
-        self.accumulate(TimeFrame(state=torch.zeros_like(self._time_frame.state), time_point=current_time))
-        return TimeFrame(state=self._time_frame.state, time_point=current_time)
-        
-        dt = current_time - self._time_frame.time_point
-        if dt == 0.0:
-            return TimeFrame(state=self._time_frame.state, time_point=current_time)
-
+        # Handle the limit case of sustain = 0
         if self._sustain == 0.0:
-            return TimeFrame(state=0.0*self._time_frame.state, time_point=current_time)
-        
-        w = np.exp(-dt/self.sustain)
-        time_frame = TimeFrame(state=w*self._time_frame.state, time_point=current_time)
+            return TimeFrame(state=torch.zeros_like(self._time_frame.state), time_point=current_time)
 
-        return time_frame 
-
+        # Correct dt ordering: positive time elapsed into the future
+        dt = current_time - self._time_frame.time_point
+        w = 1.0 if dt == 0.0 else math.exp(-dt / self.sustain)
+            
+        return TimeFrame(state=w * self._time_frame.state, time_point=current_time)
     def reset(self, initial_time_frame: TimeFrame = None) -> None:
         """Resets the :py:meth:`~briann.network.core.TimeFrameAccumulator.time_frame` of self. If `initial_time_frame` is provided, then this one will
         be used for reset and saved in :py:meth:`~briann.network.core.TimeFrameAccumulator.initial_time_frame`. Otherwise, the one provided during construction will be used.
