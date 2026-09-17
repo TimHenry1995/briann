@@ -64,17 +64,18 @@ class TimeFrame():
 
 class TimeFrameAccumulator():
     """This class is used to accumulate :py:class:`.TimeFrame` objects. Accumulation happens by adding new time-frames into the accumulator's
-    own time-frame using the :py:meth:`~briann.network.core.TimeFrameAccumulator.accumulate` function. An important feature of the accumulator is that during
-    every update, the currently stored information is sustained according to the provided `sustain` parameter and the time since the last update. 
-    This is done to ensure that older is not completely overwritten by new information, similar to how neurons in the brain sustain their state over time.
+    own time-frame using the :py:meth:`~briann.network.core.TimeFrameAccumulator.accumulate` function. New time-frames will override old time-frames.
 
     :param initial_time_frame: Sets the :py:attr:`~briann.network.core.TimeFrameAccumulator.initial_time_frame` and :py:attr:`~briann.network.core.TimeFrameAccumulator.time_frame` of this time frame accumulator. It is recommended to set the time-point of this initial time-frame to the negative inverse of the update-rate of the area that will use this accumulator, so that the first actual time-frame (located at time-point 0.0) will have a time difference with the initial time-frame equal to that inverse update-rate. This will lead the sustain to be applied correctly to the first actual time-frame. If the time-point of the initial time-frame is set to negative infinity, then the first actual time-frame will be treated as if it was the first time-frame in the simulation and will not be sustained at all.
     :type initial_time_frame: :py:class:`~briann.network.core.TimeFrame`
-    :param sustain: Sets the :py:meth:`~briann.network.core.TimeFrameAccumulator.sustain` property of self.
-    :type sustain: float
     """
-
-    def __init__(self, initial_time_frame: TimeFrame, sustain: float) -> None:
+    #An important feature of the accumulator is that during
+    #every update, the currently stored information is sustained according to the provided `sustain` parameter and the time since the last update. 
+    #This is done to ensure that older is not completely overwritten by new information, similar to how neurons in the brain sustain their state over time.
+    #:param sustain: Sets the :py:meth:`~briann.network.core.TimeFrameAccumulator.sustain` property of self.
+    #:type sustain: float
+        
+    def __init__(self, initial_time_frame: TimeFrame)-> None: #, sustain: float) -> None:
            
         # Set initial time-frame and time-frame
         if not isinstance(initial_time_frame, TimeFrame):
@@ -83,26 +84,26 @@ class TimeFrameAccumulator():
         self._initial_time_frame = initial_time_frame
 
         # Set sustain
-        self.sustain = sustain
+        #self.sustain = sustain
     
-    @property
-    def sustain(self) -> float:
-        """:return: The amount of time in seconds it takes for an impulse to decay to 1/e ≈ 0.368 of its current value. Mathematically, this time constant needs to be positive, i.e. 0 < `sustain`, but `sustain` = 0 is also possible here, since the right-sided limit for `sustain` -> 0 of the decay function is defined. The closer `sustain` is set to 0, the shorter the memory effect. The larger `sustain` is set, the longer the previous states will be remembered. See py:meth:`~.TimeFrameAccumulator.accumulate` for details.
-        :rtype: float"""
-        return self._sustain
+    #@property
+    #def sustain(self) -> float:
+    #    """:return: The amount of time in seconds it takes for an impulse to decay to 1/e ≈ 0.368 of its current value. Mathematically, this time constant needs to be positive, i.e. 0 < `sustain`, but `sustain` = 0 is also possible here, since the right-sided limit for `sustain` -> 0 of the decay function is defined. The closer `sustain` is set to 0, the shorter the memory effect. The larger `sustain` is set, the longer the previous states will be remembered. See py:meth:`~.TimeFrameAccumulator.accumulate` for details.
+    #    :rtype: float"""
+    #    return self._sustain
         
-    @sustain.setter
-    def sustain(self, new_value: float) -> None:
+    #@sustain.setter
+    #def sustain(self, new_value: float) -> None:
 
-        # Check input validity
-        if not isinstance(new_value, float):
-            raise TypeError(f"The sustain should be a float but was {type(new_value)}.")
-        
-        if new_value < 0: 
-            raise ValueError(f"The sustain has to be a non-negative float but was set to {new_value}.")
+    #    # Check input validity
+    #    if not isinstance(new_value, float):
+    #        raise TypeError(f"The sustain should be a float but was {type(new_value)}.")
+    #    
+    #    if new_value < 0: 
+    #        raise ValueError(f"The sustain has to be a non-negative float but was set to {new_value}.")
 
-        # Set property
-        self._sustain = new_value
+    #    # Set property
+    #    self._sustain = new_value
 
     def accumulate(self, time_frame: TimeFrame) -> None:
         # Ensure input validity
@@ -114,15 +115,15 @@ class TimeFrameAccumulator():
             raise ValueError("The new time_frame must not occur earlier in time than the current time-frame of self.")
         
         # Handle the limit case of sustain = 0
-        if self._sustain == 0.0:
-            self._time_frame = TimeFrame(state=time_frame.state.clone(), time_point=time_frame.time_point)
-            return
+        #if self._sustain == 0.0:
+        #    self._time_frame = TimeFrame(state=time_frame.state.clone(), time_point=time_frame.time_point)
+        #    return
 
         # Decay previous state and add incoming impulse state directly
-        dt = time_frame.time_point - self._time_frame.time_point
-        w = 1.0 if dt == 0.0 else math.exp(-dt / self.sustain)
+        #dt = time_frame.time_point - self._time_frame.time_point
+        #w = 1.0 if dt == 0.0 else math.exp(-dt / self.sustain)
 
-        self._time_frame = TimeFrame(state=w * self._time_frame.state + time_frame.state, time_point=time_frame.time_point)
+        self._time_frame = time_frame#TimeFrame(state=w * self._time_frame.state + time_frame.state, time_point=time_frame.time_point)
 
     def time_frame(self, current_time: float) -> TimeFrame:
         # Ensure data correctness
@@ -134,14 +135,15 @@ class TimeFrameAccumulator():
             raise ValueError(f"When reading a TimeFrame, the provided current_time ({current_time}) must be later than that of the time-frame held by self ({self._time_frame.time_point}).")
         
         # Handle the limit case of sustain = 0
-        if self._sustain == 0.0:
-            return TimeFrame(state=torch.zeros_like(self._time_frame.state), time_point=current_time)
+        #if self._sustain == 0.0:
+        #    return TimeFrame(state=torch.zeros_like(self._time_frame.state), time_point=current_time)
 
         # Correct dt ordering: positive time elapsed into the future
-        dt = current_time - self._time_frame.time_point
-        w = 1.0 if dt == 0.0 else math.exp(-dt / self.sustain)
+        #dt = current_time - self._time_frame.time_point
+        #w = 1.0 if dt == 0.0 else math.exp(-dt / self.sustain)
             
-        return TimeFrame(state=w * self._time_frame.state, time_point=current_time)
+        return self._time_frame#TimeFrame(state=w * self._time_frame.state, time_point=current_time)
+
     def reset(self, initial_time_frame: TimeFrame = None) -> None:
         """Resets the :py:meth:`~briann.network.core.TimeFrameAccumulator.time_frame` of self. If `initial_time_frame` is provided, then this one will
         be used for reset and saved in :py:meth:`~briann.network.core.TimeFrameAccumulator.initial_time_frame`. Otherwise, the one provided during construction will be used.
